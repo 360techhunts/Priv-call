@@ -3,75 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Private Peer Call</title>
+    <title>Instant Private Call</title>
     
-    <!-- PeerJS provides the free, serverless signaling layer -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
-            background: #000; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        body { background: #000; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         .video-wrapper { flex: 1; position: relative; background: #111; width: 100%; }
         #remoteVideo { width: 100%; height: 100%; object-fit: cover; background: #1c1c1e; }
         #localVideo { 
             position: absolute; top: 20px; right: 20px; width: 100px; height: 150px; 
             object-fit: cover; border-radius: 12px; border: 2px solid #fff; z-index: 10; transform: scaleX(-1);
+            background: #000;
         }
         .status-hud {
-            position: absolute; top: 20px; left: 20px;
-            background: rgba(0,0,0,0.7); padding: 8px 16px;
-            border-radius: 20px; font-size: 13px; font-weight: 600;
-            border: 1px solid rgba(255,255,255,0.2); z-index: 30; color: #ffcc00;
+            position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 8px 16px;
+            border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid rgba(255,255,255,0.2); z-index: 30;
         }
         .controls-overlay { 
-            position: absolute; bottom: 30px; left: 0; right: 0; display: flex; 
-            flex-direction: column; align-items: center; gap: 15px; padding: 0 20px; z-index: 20; 
+            position: absolute; bottom: 40px; left: 0; right: 0; display: flex; 
+            flex-direction: column; align-items: center; z-index: 20; padding: 0 20px;
         }
         .menu-box {
-            background: rgba(28, 28, 30, 0.95); padding: 20px; border-radius: 20px;
-            width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 12px;
-            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(28, 28, 30, 0.95); padding: 24px; border-radius: 20px;
+            width: 100%; max-width: 340px; text-align: center; border: 1px solid rgba(255,255,255,0.1);
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         button { 
-            background: #34c759; color: white; border: none; padding: 14px; font-size: 16px; 
-            font-weight: 600; border-radius: 12px; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent;
+            background: #34c759; color: white; border: none; padding: 16px; font-size: 16px; 
+            font-weight: 600; border-radius: 12px; width: 100%; cursor: pointer; transition: 0.2s;
         }
-        button.secondary { background: #007aff; }
-        input {
-            width: 100%; background: #2c2c2e; border: 1px solid rgba(255,255,255,0.2);
-            padding: 12px; border-radius: 10px; color: #fff; font-size: 15px; text-align: center;
+        button:active { transform: scale(0.98); }
+        .link-box {
+            background: #222; padding: 12px; border-radius: 8px; margin-top: 15px;
+            font-family: monospace; font-size: 13px; color: #34c759; word-break: break-all;
+            border: 1px dashed #555; display: none; cursor: pointer;
         }
-        #info-box { font-size: 13px; text-align: center; color: #34c759; margin-top: 5px; line-height: 1.4; word-break: break-all;}
-        
-        /* Token Box Styling */
-        .token-box {
-            color: #fff; background: #222; padding: 12px; margin-top: 10px;
-            display: block; border-radius: 8px; cursor: pointer; border: 1px dashed #555;
-            transition: all 0.2s;
-        }
-        .token-box:active { background: #333; border-color: #34c759; }
     </style>
 </head>
 <body>
 
     <div class="video-wrapper">
-        <div id="statusHUD" class="status-hud">Requesting Camera...</div>
-        <!-- playsinline ensures iOS doesn't force fullscreen unexpectedly -->
+        <div id="statusHUD" class="status-hud" style="color: #ffcc00;">Requesting Camera...</div>
         <video id="localVideo" autoplay playsinline muted></video>
         <video id="remoteVideo" autoplay playsinline></video>
         
         <div class="controls-overlay">
             <div id="menu" class="menu-box">
-                <input type="password" id="roomPass" placeholder="Set Room Password">
-                <button id="create-btn">1. Create Secure Call</button>
-                <div style="text-align: center; color: #8e8e93; font-size: 12px; margin: 4px 0;">— OR UNLOCK AN INVITE —</div>
-                <input type="text" id="inviteToken" placeholder="Paste Invite Token">
-                <button id="join-btn" class="secondary">2. Join Call</button>
-                <div id="info-box" style="display:none;"></div>
+                <h3 style="margin-bottom: 15px; font-size: 18px;">Instant P2P Call</h3>
+                <p style="font-size: 14px; color: #8e8e93; margin-bottom: 20px;" id="menu-desc">Create a secure, one-time link.</p>
+                
+                <button id="action-btn">Create Call Link</button>
+                <div id="link-box" class="link-box"></div>
             </div>
         </div>
     </div>
@@ -81,137 +65,136 @@
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
         const statusHUD = document.getElementById('statusHUD');
-        const infoBox = document.getElementById('info-box');
+        const menu = document.getElementById('menu');
+        const actionBtn = document.getElementById('action-btn');
+        const linkBox = document.getElementById('link-box');
 
-        // Free Google STUN and Metered TURN servers for maximum firewall bypassing
+        // Check if user is clicking an invite link
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinRoomId = urlParams.get('room');
+
         const rtcConfig = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayprojectsecret' },
-                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
+                { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
             ] 
         };
 
-        // 0. Initialize Media Devices
         async function init() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
-                statusHUD.innerText = "System Ready";
-                statusHUD.style.color = "#34c759";
+                
+                if (joinRoomId) {
+                    startJoinerFlow();
+                } else {
+                    statusHUD.innerText = "Ready to Create";
+                    statusHUD.style.color = "#fff";
+                }
             } catch (err) {
-                alert("Camera and microphone permissions must be granted to use this app.");
+                alert("Camera and microphone access is required.");
                 statusHUD.innerText = "Camera Blocked";
                 statusHUD.style.color = "#ff3b30";
             }
         }
 
-        // 1. Creator Workflow
-        document.getElementById('create-btn').onclick = () => {
-            const password = document.getElementById('roomPass').value.trim();
-            if (!password) { alert("Please set a room password first!"); return; }
+        // --- HOST FLOW ---
+        actionBtn.onclick = () => {
+            if (joinRoomId) return; // Prevent clicking if in joiner mode
+            
+            actionBtn.innerText = "Generating...";
+            actionBtn.disabled = true;
 
-            statusHUD.innerText = "Generating Secure Room...";
-            statusHUD.style.color = "#ffcc00";
+            // Create a random, unguessable room ID
+            const randomRoomId = 'room_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            peer = new Peer(randomRoomId, { config: rtcConfig });
 
-            // Initialize PeerJS to connect to the free signaling cloud
-            peer = new Peer(null, { config: rtcConfig });
-
-            // When connected to signaling server, generate token
             peer.on('open', (id) => {
-                const secureToken = btoa(JSON.stringify({ r: id, p: password }));
+                // Create the shareable URL
+                const inviteUrl = window.location.origin + window.location.pathname + '?room=' + id;
+                
+                actionBtn.style.display = 'none';
+                document.getElementById('menu-desc').innerText = "Send this link to your friend. It will expire once they join.";
+                
+                linkBox.style.display = 'block';
+                linkBox.innerText = inviteUrl + "\n\n(Tap to Copy Link)";
+                
+                linkBox.onclick = () => {
+                    navigator.clipboard.writeText(inviteUrl);
+                    linkBox.style.color = "#fff";
+                    linkBox.innerText = "✅ Link Copied! Send it now.";
+                };
 
-                // Hide menu controls
-                document.getElementById('create-btn').style.display = 'none';
-                document.getElementById('join-btn').style.display = 'none';
-                document.getElementById('inviteToken').style.display = 'none';
-                document.getElementById('roomPass').style.display = 'none';
-                
-                // Show Tap-to-Copy token
-                infoBox.innerHTML = `<strong>Room is Live!</strong><br><span style="color:#fff">Send this token to your friend:</span><br>
-                <span class='token-box' onclick='navigator.clipboard.writeText("${secureToken}"); this.style.borderColor="#34c759"; this.style.color="#34c759"; this.innerHTML="Token Copied to Clipboard! 🔒";'>
-                    ${secureToken}<br><br><small style="color:#8e8e93">(Tap to Copy)</small>
-                </span>`;
-                infoBox.style.display = 'block';
-                
-                statusHUD.innerText = "Waiting for friend...";
+                statusHUD.innerText = "Waiting for connection...";
+                statusHUD.style.color = "#ffcc00";
             });
 
-            // Listen for incoming calls
             peer.on('call', (call) => {
-                statusHUD.innerText = "Friend Connecting...";
-                call.answer(localStream); // Answer with our local feed
-                activeCall = call;
+                // THE SINGLE-USE TRICK: Disconnect from the signaling server immediately!
+                // The WebRTC video will keep working, but the room is destroyed.
+                peer.disconnect(); 
                 
-                // Show remote feed when it arrives
+                call.answer(localStream);
+                activeCall = call;
+                menu.style.display = 'none';
+
                 call.on('stream', (remoteStream) => {
-                    infoBox.style.display = 'none';
-                    document.getElementById('menu').style.display = 'none';
                     remoteVideo.srcObject = remoteStream;
-                    statusHUD.innerText = "In Call (Secure)";
+                    statusHUD.innerText = "Securely Connected";
                     statusHUD.style.color = "#34c759";
                 });
 
-                call.on('close', handleDisconnect);
+                call.on('close', endCall);
+            });
+        };
+
+        // --- JOINER FLOW ---
+        function startJoinerFlow() {
+            menu.style.display = 'none'; // Hide the menu completely
+            statusHUD.innerText = "Connecting to Host...";
+            statusHUD.style.color = "#ffcc00";
+
+            peer = new Peer(null, { config: rtcConfig });
+
+            peer.on('open', () => {
+                const call = peer.call(joinRoomId, localStream);
+                
+                if (!call) {
+                    showError("Link Expired or Invalid.");
+                    return;
+                }
+
+                activeCall = call;
+
+                call.on('stream', (remoteStream) => {
+                    remoteVideo.srcObject = remoteStream;
+                    statusHUD.innerText = "Securely Connected";
+                    statusHUD.style.color = "#34c759";
+                });
+
+                call.on('close', endCall);
             });
 
             peer.on('error', (err) => {
-                statusHUD.innerText = "Network Error";
-                statusHUD.style.color = "#ff3b30";
+                showError("Link Expired! The host has either left or someone else used this link.");
             });
-        };
+        }
 
-        // 2. Joiner Workflow
-        document.getElementById('join-btn').onclick = () => {
-            const token = document.getElementById('inviteToken').value.trim();
-            if (!token) { alert("Please paste the private invite token string!"); return; }
+        function showError(msg) {
+            statusHUD.innerText = "Connection Failed";
+            statusHUD.style.color = "#ff3b30";
+            menu.style.display = 'block';
+            menu.innerHTML = `<h3 style='color:#ff3b30'>${msg}</h3><br><button onclick='window.location.href=window.location.origin+window.location.pathname'>Create Your Own Call</button>`;
+        }
 
-            try {
-                // Decode token to find host's network ID
-                const parsedData = JSON.parse(atob(token));
-                const targetRoom = parsedData.r;
-                
-                document.getElementById('menu').style.display = 'none';
-                statusHUD.innerText = "Connecting to Host...";
-                statusHUD.style.color = "#ffcc00";
-
-                peer = new Peer(null, { config: rtcConfig });
-
-                peer.on('open', () => {
-                    // Call the host
-                    const call = peer.call(targetRoom, localStream);
-                    activeCall = call;
-
-                    // Show remote feed when it arrives
-                    call.on('stream', (remoteStream) => {
-                        remoteVideo.srcObject = remoteStream;
-                        statusHUD.innerText = "In Call (Secure)";
-                        statusHUD.style.color = "#34c759";
-                    });
-
-                    call.on('close', handleDisconnect);
-                });
-
-                peer.on('error', (err) => {
-                    alert("Host is unavailable. They may have closed the tab.");
-                    window.location.reload();
-                });
-
-            } catch(e) {
-                alert("Invalid or broken token string!");
-                window.location.reload();
-            }
-        };
-
-        function handleDisconnect() {
+        function endCall() {
             remoteVideo.srcObject = null;
             statusHUD.innerText = "Call Ended";
             statusHUD.style.color = "#ff3b30";
-            alert('Call ended. This session is closed.');
-            window.location.reload();
+            setTimeout(() => window.location.href = window.location.origin + window.location.pathname, 2000);
         }
 
-        // Start requesting camera access immediately
+        // Boot up
         init();
     </script>
 </body>
