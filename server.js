@@ -1,84 +1,86 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const { PeerServer } = require('peer');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
 
-// Enable Cross-Origin requests for mobile socket routing
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
-
-// Mandatory health check route for cloud platform confirmation
 app.get('/health', (req, res) => res.status(200).send('OK'));
-
-// Serve your mobile front-end interface files
 app.use(express.static(path.join(__dirname)));
 
-// 🔒 CHANGE THIS to your private group passcode
-const MASTER_PASSWORD = "reddy"; 
-
-// Tracks active rooms and their lifecycle states in temporary RAM
+// Dynamic storage for multi-user rooms
 const activeRooms = {}; 
 
 io.on('connection', (socket) => {
 
-    // Triggered ONLY when the creator taps the button
-    socket.on('create-room', ({ roomId, password }) => {
-        if (password !== MASTER_PASSWORD) {
-            return socket.emit('auth-failed', 'Access Denied.');
-        }
-        activeRooms[roomId] = { creatorId: socket.id, status: 'waiting' };
+    // Triggered when any unique creator generates a custom session link
+    socket.on('create-room', ({ roomId, password, peerId }) => {
+        activeRooms[roomId] = {
+            creatorSocketId: socket.id,
+            creatorPeerId: peerId,
+            joinerPeerId: null,
+            password: password, // Saved dynamically for this specific room
+            status: 'waiting'
+        };
         socket.join(roomId);
+        console.log(`[Created] Room ${roomId} secured with custom passcode.`);
     });
 
-    // Triggered when the partner joins via the shared room link
-    socket.on('join-room', ({ roomId, password }) => {
-        if (password !== MASTER_PASSWORD) {
-            socket.emit('auth-failed', 'Access Denied: Invalid Passcode.');
+    // Triggered when a guest attempts to unlock a shared link
+    socket.on('join-room', ({ roomId, password, peerId }) => {
+        const room = activeRooms[roomId];
+
+        // 1. Strict Link Validation Checks
+        if (!room || room.status === 'expired') {
+            socket.emit('room-error', 'Link Not Found: This session has expired or never existed.');
+            return socket.disconnect();
+        }
+        if (room.status === 'active') {
+            socket.emit('room-error', 'Link Expired: This call room is currently occupied.');
+            return socket.disconnect();
+        }
+        if (room.password !== password) {
+            socket.emit('auth-error', 'Access Denied: Invalid Passcode for this specific call.');
             return socket.disconnect();
         }
 
-        // Validate if the room exists or is active
-        if (!activeRooms[roomId]) {
-            socket.emit('room-not-found', 'Link Not Found: This session has expired or never existed.');
-            return socket.disconnect();
-        }
-
-        if (activeRooms[roomId].status === 'active') {
-            socket.emit('room-not-found', 'Link Expired: This call room is already occupied.');
-            return socket.disconnect();
-        }
-
-        // Connect the peer and lock down the room
+        // 2. Lock the single-use room immediately
         socket.join(roomId);
-        activeRooms[roomId].status = 'active';
-        socket.to(roomId).emit('peer-joined');
+        room.joinerPeerId = peerId;
+        room.status = 'active';
 
-        socket.on('signal', (data) => {
-            socket.to(roomId).emit('signal', data);
+        // 3. Inform the creator precisely that their peer has entered
+        io.to(roomId).emit('peer-status-change', { 
+            connected: true, 
+            targetPeerId: room.creatorPeerId 
+        });
+        
+        // Pass the creator's ID back to the joiner to kick off the connection call
+        socket.emit('peer-status-change', { 
+            connected: true, 
+            targetPeerId: room.creatorPeerId 
         });
     });
 
-    // Triggers instantly the absolute moment a browser tab closes or refreshes
+    // Triggers instantly if a mobile tab closes, crashes, or loses cell connection
     socket.on('disconnect', () => {
         for (const roomId in activeRooms) {
             const room = activeRooms[roomId];
-            
-            // If either participant leaves, destroy the room identifier completely
-            if (room.creatorId === socket.id || room.status === 'active') {
-                socket.to(roomId).emit('peer-disconnected');
-                delete activeRooms[roomId]; // Erased from server RAM instantly
+            if (room.creatorSocketId === socket.id || room.status === 'active') {
+                io.to(roomId).emit('peer-status-change', { connected: false });
+                delete activeRooms[roomId]; // Erased from server RAM completely
+                console.log(`[Destroyed] Room ${roomId} permanently purged.`);
             }
         }
     });
 });
 
-// Force bind to all network interfaces for mobile deployment routing
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+    // Start Peer network server inline alongside main app port
+    PeerServer({ port: 9000, path: '/myapp' });
+});
