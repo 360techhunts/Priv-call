@@ -48,12 +48,19 @@
         const urlParams = new URLSearchParams(window.location.search);
         let roomId = urlParams.get('room');
 
-        const rtcConfig = { iceServers: [{ urls: 'stun:://google.com' }] };
+        const rtcConfig = { 
+            iceServers: [
+                { urls: 'stun:://google.com' },
+                { urls: 'stun:://google.com' },
+                { urls: 'turn:relay.metered.ca:80', username: 'metered', credential: 'password' }
+            ] 
+        };
 
         async function init() {
             userPasscode = prompt("Enter your private group passcode:");
             if (!userPasscode) {
                 alert("Passcode required.");
+                window.location.reload();
                 return;
             }
 
@@ -63,13 +70,14 @@
                 });
                 localVideo.srcObject = localStream;
 
+                // If arriving via shared link, tell server we are joining an existing session
                 if (roomId) {
                     document.getElementById('setup').style.display = 'none';
                     socket.emit('join-room', { roomId, password: userPasscode });
                     setupPeerConnection();
                 }
             } catch (err) {
-                alert("Camera & microphone permissions are required to use this web app.");
+                alert("Camera & microphone access is required.");
             }
         }
 
@@ -83,10 +91,11 @@
             document.getElementById('setup').style.display = 'none';
 
             navigator.clipboard.writeText(inviteLink).then(() => {
-                alert("Invite link copied to clipboard!");
+                alert("Invite link copied!");
             });
 
-            socket.emit('join-room', { roomId, password: userPasscode });
+            // Register room creation event directly
+            socket.emit('create-room', { roomId, password: userPasscode });
             setupPeerConnection();
         };
 
@@ -119,9 +128,16 @@
             });
 
             socket.on('auth-failed', (msg) => { alert(msg); window.location.reload(); });
+            
+            // Clean interface lock if link is dead/expired
+            socket.on('room-not-found', (msg) => {
+                alert(msg);
+                window.location.href = window.location.origin;
+            });
+
             socket.on('peer-disconnected', () => {
                 remoteVideo.srcObject = null;
-                alert('Call ended. The ephemeral room has been destroyed.');
+                alert('Call ended. The link has been permanently destroyed.');
                 window.location.href = window.location.origin;
             });
         }
