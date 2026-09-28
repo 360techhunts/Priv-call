@@ -35,7 +35,7 @@
         }
         button { 
             background: #34c759; color: white; border: none; padding: 14px; font-size: 16px; 
-            font-weight: 600; border-radius: 12px; width: 100%; cursor: pointer;
+            font-weight: 600; border-radius: 12px; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
         button.secondary { background: #007aff; }
         input {
@@ -48,7 +48,7 @@
 <body>
 
     <div class="video-wrapper">
-        <div id="statusHUD" class="status-hud">Initializing Permissions...</div>
+        <div id="statusHUD" class="status-hud">Connecting Media...</div>
         <video id="localVideo" autoplay playsinline muted></video>
         <video id="remoteVideo" autoplay playsinline></video>
         
@@ -70,18 +70,25 @@
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
         const statusHUD = document.getElementById('statusHUD');
-        const infoBox = document.getElementById('infoBox');
+        const infoBox = document.getElementById('info-box');
 
         async function init() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
                 
+                // FIXED: Forces connection mapping relative to current hosting platform domain configurations
                 myPeer = new Peer(undefined, {
                     host: window.location.hostname,
-                    port: window.location.port || (window.location.protocol === 'https:' ? 443 : 80),
+                    port: (window.location.protocol === 'https:' ? 443 : (window.location.port || 80)),
                     path: '/peerjs',
-                    secure: window.location.protocol === 'https:'
+                    secure: window.location.protocol === 'https:',
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' }
+                        ]
+                    }
                 });
 
                 myPeer.on('open', (id) => {
@@ -89,6 +96,7 @@
                     statusHUD.style.color = "#34c759";
                 });
 
+                // Listen for incoming call streams (Triggers on Creator Device)
                 myPeer.on('call', (call) => {
                     currentCall = call;
                     call.answer(localStream);
@@ -100,33 +108,32 @@
                 });
 
             } catch (err) {
-                alert("Camera and microphone permission popups must be accepted.");
+                alert("Camera and mic permissions must be allowed.");
             }
         }
 
-        // Creator Flow
+        // Creator Workflow
         document.getElementById('create-btn').onclick = () => {
             const password = document.getElementById('roomPass').value.trim();
             if (!password) { alert("Please type a room password first!"); return; }
 
-            // Generate an easily readable 6-digit PIN number
             const generatedPIN = Math.floor(100000 + Math.random() * 900000).toString();
             
             document.getElementById('create-btn').style.display = 'none';
             document.getElementById('join-btn').style.display = 'none';
             document.getElementById('joinPIN').style.display = 'none';
+            document.getElementById('roomPass').style.display = 'none';
             
-            const display = document.getElementById('info-box');
-            display.innerHTML = `<strong>Room Ready!</strong><br>Tell your friend to open the web link and enter:<br><br>PIN: <span style='font-size:18px;color:#fff;'>${generatedPIN}</span><br>Password: <span style='font-size:18px;color:#fff;'>${password}</span>`;
-            display.style.display = 'block';
+            infoBox.innerHTML = `<strong>Room Live!</strong><br>Give your friend these details:<br><br>PIN: <span style='font-size:18px;color:#fff;font-family:monospace;'>${generatedPIN}</span><br>Password: <span style='font-size:18px;color:#fff;font-family:monospace;'>${password}</span>`;
+            infoBox.style.display = 'block';
             
-            statusHUD.innerText = "Waiting for friend to enter PIN...";
+            statusHUD.innerText = "Waiting for friend...";
             statusHUD.style.color = "#ffcc00";
 
             socket.emit('create-room', { roomId: generatedPIN, password: password, peerId: myPeer.id });
         };
 
-        // Joiner Flow
+        // Joiner Workflow
         document.getElementById('join-btn').onclick = () => {
             const password = document.getElementById('roomPass').value.trim();
             const pin = document.getElementById('joinPIN').value.trim();
@@ -139,17 +146,20 @@
             socket.emit('join-room', { roomId: pin, password: password, peerId: myPeer.id });
         };
 
+        // Handshake Router Sync
         socket.on('peer-status-change', (data) => {
             if (data.connected) {
                 document.getElementById('menu').style.display = 'none';
-                statusHUD.innerText = "Connecting Streams...";
+                statusHUD.innerText = "Connecting Media streams...";
                 
+                // FIXED: The Joiner explicitly calls the Creator using the verified dynamic Target Peer ID
                 if (!data.isCreator) {
                     const call = myPeer.call(data.targetPeerId, localStream);
                     currentCall = call;
                     call.on('stream', (remoteStream) => {
                         remoteVideo.srcObject = remoteStream;
                         statusHUD.innerText = "In Call (Connected)";
+                        statusHUD.style.color = "#34c759";
                     });
                 }
             } 
@@ -159,7 +169,7 @@
             remoteVideo.srcObject = null;
             statusHUD.innerText = "Call ended / Link Expired";
             statusHUD.style.color = "#ff3b30";
-            alert('The other person left. This room and PIN are now permanently destroyed.');
+            alert('The call session has ended. This 6-digit PIN has been completely destroyed.');
             window.location.href = window.location.origin;
         });
 
