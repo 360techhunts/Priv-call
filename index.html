@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Private Peer Call</title>
+    <title>Private Peer-to-Peer Calling</title>
     <script src="/socket.io/socket.io.js"></script>
+    <!-- Robust Mobile WebRTC Helper Library -->
+    <script src="https://unpkg.com"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
@@ -17,20 +19,27 @@
             position: absolute; top: 20px; right: 20px; width: 100px; height: 150px; 
             object-fit: cover; border-radius: 12px; border: 2px solid #fff; z-index: 10; transform: scaleX(-1);
         }
+        .status-hud {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(0,0,0,0.7); padding: 8px 16px;
+            border-radius: 20px; font-size: 13px; font-weight: 600;
+            border: 1px solid rgba(255,255,255,0.2); z-index: 30; color: #ffcc00;
+        }
         .controls-overlay { 
             position: absolute; bottom: 30px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 0 20px; z-index: 20; 
         }
         button { 
-            background: #34c759; color: white; border: none; padding: 16px 32px; font-size: 16px; font-weight: 600; border-radius: 30px; width: 100%; max-width: 280px; -webkit-tap-highlight-color: transparent; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            background: #34c759; color: white; border: none; padding: 16px 32px; font-size: 16px; font-weight: 600; border-radius: 30px; width: 100%; max-width: 280px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
         }
         #link-display { 
-            background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 15px; border-radius: 14px; font-size: 14px; text-align: center; word-break: break-all; border: 1px solid rgba(255,255,255,0.1); width: 100%; max-width: 320px; color: #34c759;
+            background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); padding: 15px; border-radius: 14px; font-size: 14px; text-align: center; word-break: break-all; border: 1px solid rgba(255,255,255,0.1); width: 100%; max-width: 320px; color: #34c759;
         }
     </style>
 </head>
 <body>
 
     <div class="video-wrapper">
+        <div id="statusHUD" class="status-hud">Connecting System...</div>
         <video id="localVideo" autoplay playsinline muted></video>
         <video id="remoteVideo" autoplay playsinline></video>
         <div class="controls-overlay">
@@ -41,106 +50,100 @@
 
     <script>
         const socket = io();
-        let localStream, peerConnection, userPasscode;
+        let localStream, myPeer, currentCall;
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
+        const statusHUD = document.getElementById('statusHUD');
 
         const urlParams = new URLSearchParams(window.location.search);
         let roomId = urlParams.get('room');
 
-        const rtcConfig = { 
-            iceServers: [
-                { urls: 'stun:://google.com' },
-                { urls: 'stun:://google.com' },
-                { urls: 'turn:relay.metered.ca:80', username: 'metered', credential: 'password' }
-            ] 
-        };
-
         async function init() {
-            userPasscode = prompt("Enter your private group passcode:");
-            if (!userPasscode) {
-                alert("Passcode required.");
-                window.location.reload();
-                return;
-            }
-
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" }, audio: true 
-                });
+                localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
+                
+                // Initialize Mobile-optimized Network Traversal Peer engine
+                myPeer = new Peer(undefined, {
+                    host: window.location.hostname,
+                    port: window.location.port || (window.location.protocol === 'https:' ? 443 : 80),
+                    path: '/myapp',
+                    secure: window.location.protocol === 'https:'
+                });
 
-                // If arriving via shared link, tell server we are joining an existing session
-                if (roomId) {
-                    document.getElementById('setup').style.display = 'none';
-                    socket.emit('join-room', { roomId, password: userPasscode });
-                    setupPeerConnection();
-                }
+                myPeer.on('open', (id) => {
+                    statusHUD.innerText = "System Ready";
+                    statusHUD.style.color = "#34c759";
+
+                    // Handle Joiner Workflow
+                    if (roomId) {
+                        document.getElementById('setup').style.display = 'none';
+                        const passcode = prompt("Enter the unique password provided by the link creator:");
+                        statusHUD.innerText = "Verifying Room Invite...";
+                        socket.emit('join-room', { roomId, password: passcode, peerId: id });
+                    }
+                });
+
+                // Listen for incoming calls
+                myPeer.on('call', (call) => {
+                    currentCall = call;
+                    call.answer(localStream);
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        statusHUD.innerText = "In Call (Connected)";
+                        statusHUD.style.color = "#34c759";
+                    });
+                });
+
             } catch (err) {
-                alert("Camera & microphone access is required.");
+                alert("Camera and mic device permissions are mandatory.");
             }
         }
 
+        // Handle Creator Workflow
         document.getElementById('create-btn').onclick = () => {
+            const customPassword = prompt("Set a unique password for this specific call:");
+            if (!customPassword) { alert("A password is required to lock the room!"); return; }
+
             roomId = Math.random().toString(36).substring(2, 11);
-            const inviteLink = `${window.location.origin}?room=${roomId}`;
+            const inviteLink = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
             
             const display = document.getElementById('link-display');
-            display.innerText = "Link copied! Share it privately:\n" + inviteLink;
+            display.innerText = "Share link & chosen password privately:\n\n" + inviteLink;
             display.style.display = 'block';
             document.getElementById('setup').style.display = 'none';
 
-            navigator.clipboard.writeText(inviteLink).then(() => {
-                alert("Invite link copied!");
-            });
+            navigator.clipboard.writeText(inviteLink);
+            
+            statusHUD.innerText = "Waiting for friend...";
+            statusHUD.style.color = "#ffcc00";
 
-            // Register room creation event directly
-            socket.emit('create-room', { roomId, password: userPasscode });
-            setupPeerConnection();
+            socket.emit('create-room', { roomId, password: customPassword, peerId: myPeer.id });
         };
 
-        function setupPeerConnection() {
-            peerConnection = new RTCPeerConnection(rtcConfig);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-            peerConnection.ontrack = (event) => { remoteVideo.srcObject = event.streams; };
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) socket.emit('signal', { candidate: event.candidate });
-            };
-
-            socket.on('signal', async (data) => {
-                if (data.sdp) {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-                    if (data.sdp.type === 'offer') {
-                        const answer = await peerConnection.createAnswer();
-                        await peerConnection.setLocalDescription(answer);
-                        socket.emit('signal', { sdp: answer });
-                    }
-                } else if (data.candidate) {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                }
-            });
-
-            socket.on('peer-joined', async () => {
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('signal', { sdp: offer });
-            });
-
-            socket.on('auth-failed', (msg) => { alert(msg); window.location.reload(); });
-            
-            // Clean interface lock if link is dead/expired
-            socket.on('room-not-found', (msg) => {
-                alert(msg);
-                window.location.href = window.location.origin;
-            });
-
-            socket.on('peer-disconnected', () => {
+        // Network Status Router Handles
+        socket.on('peer-status-change', (data) => {
+            if (data.connected && roomId && urlParams.get('room')) {
+                statusHUD.innerText = "Friend Joined! Calling...";
+                // Initiate robust peer stream connection
+                const call = myPeer.call(data.targetPeerId, localStream);
+                currentCall = call;
+                call.on('stream', (remoteStream) => {
+                    remoteVideo.srcObject = remoteStream;
+                    statusHUD.innerText = "In Call (Connected)";
+                    statusHUD.style.color = "#34c759";
+                });
+            } else if (!data.connected) {
                 remoteVideo.srcObject = null;
-                alert('Call ended. The link has been permanently destroyed.');
+                statusHUD.innerText = "Call ended / Link Destroyed";
+                statusHUD.style.color = "#ff3b30";
+                alert('Session closed. The room and single-use link have been wiped from memory.');
                 window.location.href = window.location.origin;
-            });
-        }
+            }
+        });
+
+        socket.on('auth-error', (msg) => { alert(msg); window.location.reload(); });
+        socket.on('room-error', (msg) => { alert(msg); window.location.href = window.location.origin; });
 
         init();
     </script>
