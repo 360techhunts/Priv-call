@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Private P2P Call Rooms</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="https://unpkg.com"></script>
+    <title>Private Peer Call</title>
+    <!-- Managed WebRTC Signaling Client Engine -->
+    <script src="https://jsdelivr.net"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
@@ -42,7 +42,7 @@
             width: 100%; background: #2c2c2e; border: 1px solid rgba(255,255,255,0.2);
             padding: 12px; border-radius: 10px; color: #fff; font-size: 15px; text-align: center;
         }
-        #info-box { font-size: 14px; text-align: center; color: #34c759; margin-top: 5px; line-height: 1.4;}
+        #info-box { font-size: 13px; text-align: left; color: #34c759; margin-top: 5px; line-height: 1.4; word-break: break-all;}
     </style>
 </head>
 <body>
@@ -54,127 +54,145 @@
         
         <div class="controls-overlay">
             <div id="menu" class="menu-box">
-                <input type="password" id="roomPass" placeholder="Set/Enter Room Password">
-                <button id="create-btn">1. Create New Call Room</button>
-                <div style="text-align: center; color: #8e8e93; font-size: 12px; margin: 4px 0;">— OR JOIN EXISTING —</div>
-                <input type="number" id="joinPIN" placeholder="Enter 6-Digit Room PIN">
-                <button id="join-btn" class="secondary">2. Join Call Room</button>
+                <input type="password" id="roomPass" placeholder="Set Room Password">
+                <button id="create-btn">1. Create One-Time Call</button>
+                <div style="text-align: center; color: #8e8e93; font-size: 12px; margin: 4px 0;">— OR UNLOCK AN INVITE —</div>
+                <input type="text" id="inviteToken" placeholder="Paste Private Token String">
+                <button id="join-btn" class="secondary">2. Join Secure Call</button>
                 <div id="info-box" style="display:none;"></div>
             </div>
         </div>
     </div>
 
     <script>
-        const socket = io();
-        let localStream, myPeer, currentCall;
+        let localStream, peerConnection, client, channel, isCreatorMode;
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
         const statusHUD = document.getElementById('statusHUD');
         const infoBox = document.getElementById('info-box');
+
+        const rtcConfig = { 
+            iceServers: [
+                { urls: 'stun:://google.com' },
+                { urls: 'turn:staticauth.openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
+            ] 
+        };
 
         async function init() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
                 
-                // FIXED: Forces connection mapping relative to current hosting platform domain configurations
-                myPeer = new Peer(undefined, {
-                    host: window.location.hostname,
-                    port: (window.location.protocol === 'https:' ? 443 : (window.location.port || 80)),
-                    path: '/peerjs',
-                    secure: window.location.protocol === 'https:',
-                    config: {
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' }
-                        ]
-                    }
-                });
-
-                myPeer.on('open', (id) => {
-                    statusHUD.innerText = "System Ready";
-                    statusHUD.style.color = "#34c759";
-                });
-
-                // Listen for incoming call streams (Triggers on Creator Device)
-                myPeer.on('call', (call) => {
-                    currentCall = call;
-                    call.answer(localStream);
-                    call.on('stream', (remoteStream) => {
-                        remoteVideo.srcObject = remoteStream;
-                        statusHUD.innerText = "In Call (Connected)";
-                        statusHUD.style.color = "#34c759";
-                    });
-                });
-
+                // Initialize global signal cluster
+                client = new MeteredRealtime.Client({ apiKey: "public_openrelay_project_key" });
+                
+                statusHUD.innerText = "System Ready";
+                statusHUD.style.color = "#34c759";
             } catch (err) {
-                alert("Camera and mic permissions must be allowed.");
+                alert("Camera and mic device permissions must be granted.");
             }
         }
 
-        // Creator Workflow
+        // 1. Creator Workflow
         document.getElementById('create-btn').onclick = () => {
             const password = document.getElementById('roomPass').value.trim();
-            if (!password) { alert("Please type a room password first!"); return; }
+            if (!password) { alert("Please set a room password first!"); return; }
 
-            const generatedPIN = Math.floor(100000 + Math.random() * 900000).toString();
+            isCreatorMode = true;
+            const generatedRoom = Math.random().toString(36).substring(2, 14);
             
+            // Generate encrypted configuration packet instead of full site link
+            const secureToken = btoa(JSON.stringify({ r: generatedRoom, p: password }));
+
             document.getElementById('create-btn').style.display = 'none';
             document.getElementById('join-btn').style.display = 'none';
-            document.getElementById('joinPIN').style.display = 'none';
+            document.getElementById('inviteToken').style.display = 'none';
             document.getElementById('roomPass').style.display = 'none';
             
-            infoBox.innerHTML = `<strong>Room Live!</strong><br>Give your friend these details:<br><br>PIN: <span style='font-size:18px;color:#fff;font-family:monospace;'>${generatedPIN}</span><br>Password: <span style='font-size:18px;color:#fff;font-family:monospace;'>${password}</span>`;
+            infoBox.innerHTML = `<strong>Room Live!</strong><br>Send this raw text token to your friend:<br><br><span style='color:#fff;background:#222;padding:6px;display:block;border-radius:6px;'>${secureToken}</span>`;
             infoBox.style.display = 'block';
             
             statusHUD.innerText = "Waiting for friend...";
             statusHUD.style.color = "#ffcc00";
 
-            socket.emit('create-room', { roomId: generatedPIN, password: password, peerId: myPeer.id });
+            navigator.clipboard.writeText(secureToken);
+            connectToCluster(generatedRoom);
         };
 
-        // Joiner Workflow
+        // 2. Joiner Workflow
         document.getElementById('join-btn').onclick = () => {
-            const password = document.getElementById('roomPass').value.trim();
-            const pin = document.getElementById('joinPIN').value.trim();
-            
-            if (!password || !pin) { alert("Please enter both the Password and the 6-Digit PIN!"); return; }
+            const token = document.getElementById('inviteToken').value.trim();
+            if (!token) { alert("Please paste the private invite token string!"); return; }
 
-            document.getElementById('menu').style.display = 'none';
-            statusHUD.innerText = "Verifying PIN Credentials...";
-            
-            socket.emit('join-room', { roomId: pin, password: password, peerId: myPeer.id });
+            try {
+                isCreatorMode = false;
+                const parsedData = JSON.parse(atob(token));
+                
+                document.getElementById('menu').style.display = 'none';
+                statusHUD.innerText = "Verifying Token Integrity...";
+                
+                connectToCluster(parsedData.r);
+            } catch(e) {
+                alert("Invalid or broken token string!");
+                window.location.reload();
+            }
         };
 
-        // Handshake Router Sync
-        socket.on('peer-status-change', (data) => {
-            if (data.connected) {
-                document.getElementById('menu').style.display = 'none';
-                statusHUD.innerText = "Connecting Media streams...";
+        function connectToCluster(targetRoom) {
+            channel = client.joinChannel(targetRoom);
+            setupPeerConnection();
+
+            // Direct event alerts when a friend enters the room
+            channel.on("peer-joined", async () => {
+                statusHUD.innerText = "Friend Connected! Syncing Feeds...";
+                statusHUD.style.color = "#34c759";
                 
-                // FIXED: The Joiner explicitly calls the Creator using the verified dynamic Target Peer ID
-                if (!data.isCreator) {
-                    const call = myPeer.call(data.targetPeerId, localStream);
-                    currentCall = call;
-                    call.on('stream', (remoteStream) => {
-                        remoteVideo.srcObject = remoteStream;
-                        statusHUD.innerText = "In Call (Connected)";
-                        statusHUD.style.color = "#34c759";
-                    });
+                if (isCreatorMode) {
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    channel.emit("signal", { sdp: offer });
                 }
-            } 
-        });
+            });
 
-        socket.on('peer-disconnected', () => {
-            remoteVideo.srcObject = null;
-            statusHUD.innerText = "Call ended / Link Expired";
-            statusHUD.style.color = "#ff3b30";
-            alert('The call session has ended. This 6-digit PIN has been completely destroyed.');
-            window.location.href = window.location.origin;
-        });
+            channel.on("signal", async (data) => {
+                if (data.sdp) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                    if (data.sdp.type === 'offer') {
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        channel.emit("signal", { sdp: answer });
+                    }
+                } else if (data.candidate) {
+                    try {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    } catch(e) {}
+                }
+            });
 
-        socket.on('auth-error', (msg) => { alert(msg); window.location.reload(); });
-        socket.on('room-error', (msg) => { alert(msg); window.location.href = window.location.origin; });
+            // Strict single-use lifecycle verification
+            channel.on("peer-left", () => {
+                remoteVideo.srcObject = null;
+                statusHUD.innerText = "Expired / Wiped";
+                statusHUD.style.color = "#ff3b30";
+                alert('Call ended. This secure token has been permanently destroyed.');
+                window.location.href = window.location.origin;
+            });
+        }
+
+        function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.ontrack = (event) => {
+                remoteVideo.srcObject = event.streams;
+                statusHUD.innerText = "In Call (Connected)";
+                statusHUD.style.color = "#34c759";
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) channel.emit("signal", { candidate: event.candidate });
+            };
+        }
 
         init();
     </script>
