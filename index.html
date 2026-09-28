@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Private Peer Call</title>
-    <!-- Managed WebRTC Signaling Client Engine -->
-    <script src="https://jsdelivr.net"></script>
+    <!-- You MUST replace this generic jsdelivr link with the actual MeteredRealtime SDK URL -->
+    <script src="https://cdn.jsdelivr.net/npm/metered-realtime"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
@@ -54,7 +54,7 @@
         
         <div class="controls-overlay">
             <div id="menu" class="menu-box">
-                <input type="password" id="roomPass" placeholder="Set Room Password">
+                <input type="password" id="roomPass" placeholder="Set Room Password (UI Only)">
                 <button id="create-btn">1. Create One-Time Call</button>
                 <div style="text-align: center; color: #8e8e93; font-size: 12px; margin: 4px 0;">— OR UNLOCK AN INVITE —</div>
                 <input type="text" id="inviteToken" placeholder="Paste Private Token String">
@@ -73,7 +73,7 @@
 
         const rtcConfig = { 
             iceServers: [
-                { urls: 'stun:://google.com' },
+                { urls: 'stun:stun.l.google.com:19302' }, // Fixed STUN syntax
                 { urls: 'turn:staticauth.openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
             ] 
         };
@@ -83,7 +83,6 @@
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
                 
-                // Initialize global signal cluster
                 client = new MeteredRealtime.Client({ apiKey: "public_openrelay_project_key" });
                 
                 statusHUD.innerText = "System Ready";
@@ -101,7 +100,7 @@
             isCreatorMode = true;
             const generatedRoom = Math.random().toString(36).substring(2, 14);
             
-            // Generate encrypted configuration packet instead of full site link
+            // Note: Base64 is not true encryption.
             const secureToken = btoa(JSON.stringify({ r: generatedRoom, p: password }));
 
             document.getElementById('create-btn').style.display = 'none';
@@ -142,7 +141,6 @@
             channel = client.joinChannel(targetRoom);
             setupPeerConnection();
 
-            // Direct event alerts when a friend enters the room
             channel.on("peer-joined", async () => {
                 statusHUD.innerText = "Friend Connected! Syncing Feeds...";
                 statusHUD.style.color = "#34c759";
@@ -169,7 +167,6 @@
                 }
             });
 
-            // Strict single-use lifecycle verification
             channel.on("peer-left", () => {
                 remoteVideo.srcObject = null;
                 statusHUD.innerText = "Expired / Wiped";
@@ -184,7 +181,8 @@
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = (event) => {
-                remoteVideo.srcObject = event.streams;
+                // Fixed: Assign the first stream in the array
+                remoteVideo.srcObject = event.streams[0]; 
                 statusHUD.innerText = "In Call (Connected)";
                 statusHUD.style.color = "#34c759";
             };
