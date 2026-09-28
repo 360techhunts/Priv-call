@@ -60,7 +60,7 @@
         </div>
     </div>
 
-    <script>
+<script>
         let localStream, peer, activeCall;
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
@@ -76,6 +76,7 @@
         const rtcConfig = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
             ] 
         };
@@ -100,17 +101,15 @@
 
         // --- HOST FLOW ---
         actionBtn.onclick = () => {
-            if (joinRoomId) return; // Prevent clicking if in joiner mode
+            if (joinRoomId) return;
             
             actionBtn.innerText = "Generating...";
             actionBtn.disabled = true;
 
-            // Create a random, unguessable room ID
             const randomRoomId = 'room_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
             peer = new Peer(randomRoomId, { config: rtcConfig });
 
             peer.on('open', (id) => {
-                // Create the shareable URL
                 const inviteUrl = window.location.origin + window.location.pathname + '?room=' + id;
                 
                 actionBtn.style.display = 'none';
@@ -130,10 +129,6 @@
             });
 
             peer.on('call', (call) => {
-                // THE SINGLE-USE TRICK: Disconnect from the signaling server immediately!
-                // The WebRTC video will keep working, but the room is destroyed.
-                peer.disconnect(); 
-                
                 call.answer(localStream);
                 activeCall = call;
                 menu.style.display = 'none';
@@ -142,15 +137,29 @@
                     remoteVideo.srcObject = remoteStream;
                     statusHUD.innerText = "Securely Connected";
                     statusHUD.style.color = "#34c759";
+
+                    // THE FIX: Wait 3 seconds AFTER the video starts playing to destroy the room.
+                    // This gives the browsers enough time to stabilize the WebRTC connection.
+                    setTimeout(() => {
+                        if (!peer.disconnected) {
+                            peer.disconnect();
+                            console.log("Room locked and destroyed. Link is now single-use.");
+                        }
+                    }, 3000);
                 });
 
                 call.on('close', endCall);
+            });
+
+            peer.on('error', (err) => {
+                console.error(err);
+                showError("Network error. Please refresh and try again.");
             });
         };
 
         // --- JOINER FLOW ---
         function startJoinerFlow() {
-            menu.style.display = 'none'; // Hide the menu completely
+            menu.style.display = 'none';
             statusHUD.innerText = "Connecting to Host...";
             statusHUD.style.color = "#ffcc00";
 
@@ -176,6 +185,7 @@
             });
 
             peer.on('error', (err) => {
+                console.error(err);
                 showError("Link Expired! The host has either left or someone else used this link.");
             });
         }
@@ -194,7 +204,6 @@
             setTimeout(() => window.location.href = window.location.origin + window.location.pathname, 2000);
         }
 
-        // Boot up
         init();
     </script>
 </body>
