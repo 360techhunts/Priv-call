@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { ExpressPeerServer } = require('peer'); // Integrated directly into Express
+const { ExpressPeerServer } = require('peer');
 const path = require('path');
 
 const app = express();
@@ -10,11 +10,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 const PORT = process.env.PORT || 3000;
 
-// Share the main web port for Peer data transfers (eliminates Port 9000 error)
-const peerServer = ExpressPeerServer(server, {
-    debug: true,
-    path: '/'
-});
+const peerServer = ExpressPeerServer(server, { debug: true, path: '/' });
 app.use('/peerjs', peerServer);
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
@@ -24,6 +20,7 @@ const activeRooms = {};
 
 io.on('connection', (socket) => {
     
+    // Creator establishes a room with a 6-Digit ID and Password
     socket.on('create-room', ({ roomId, password, peerId }) => {
         activeRooms[roomId] = {
             creatorSocketId: socket.id,
@@ -33,18 +30,19 @@ io.on('connection', (socket) => {
             status: 'waiting'
         };
         socket.join(roomId);
-        console.log(`Room created: ${roomId}`);
+        console.log(`[Created] Room PIN: ${roomId}`);
     });
 
+    // Joiner unlocks the room using the 6-Digit ID and Password
     socket.on('join-room', ({ roomId, password, peerId }) => {
         const room = activeRooms[roomId];
 
         if (!room || room.status === 'expired') {
-            socket.emit('room-error', 'Link Not Found: This session has expired.');
+            socket.emit('room-error', 'PIN Not Found: This session has expired or never existed.');
             return socket.disconnect();
         }
         if (room.status === 'active') {
-            socket.emit('room-error', 'Link Expired: This call is already occupied.');
+            socket.emit('room-error', 'PIN Expired: This call room is already occupied.');
             return socket.disconnect();
         }
         if (room.password !== password) {
@@ -56,7 +54,6 @@ io.on('connection', (socket) => {
         room.joinerPeerId = peerId;
         room.status = 'active';
 
-        // Connect the link creator and the friend seamlessly
         io.to(roomId).emit('peer-status-change', { 
             connected: true, 
             isCreator: true,
@@ -74,9 +71,9 @@ io.on('connection', (socket) => {
         for (const roomId in activeRooms) {
             const room = activeRooms[roomId];
             if (room.creatorSocketId === socket.id || room.status === 'active') {
-                io.to(roomId).emit('peer-status-change', { connected: false });
+                io.to(roomId).emit('peer-disconnected');
                 delete activeRooms[roomId]; 
-                console.log(`Room purged: ${roomId}`);
+                console.log(`[Purged] Room PIN ${roomId} completely deleted.`);
             }
         }
     });
