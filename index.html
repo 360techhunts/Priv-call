@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Private Peer-to-Peer Calling</title>
     <script src="/socket.io/socket.io.js"></script>
-    <!-- Robust Mobile WebRTC Helper Library -->
     <script src="https://unpkg.com"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,6 +54,7 @@
         const remoteVideo = document.getElementById('remoteVideo');
         const statusHUD = document.getElementById('statusHUD');
 
+        // Target exact URL parameters safely
         const urlParams = new URLSearchParams(window.location.search);
         let roomId = urlParams.get('room');
 
@@ -63,11 +63,11 @@
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
                 
-                // Initialize Mobile-optimized Network Traversal Peer engine
+                // Initialize clean data pipeline on shared main server port
                 myPeer = new Peer(undefined, {
                     host: window.location.hostname,
                     port: window.location.port || (window.location.protocol === 'https:' ? 443 : 80),
-                    path: '/myapp',
+                    path: '/peerjs',
                     secure: window.location.protocol === 'https:'
                 });
 
@@ -75,16 +75,14 @@
                     statusHUD.innerText = "System Ready";
                     statusHUD.style.color = "#34c759";
 
-                    // Handle Joiner Workflow
                     if (roomId) {
                         document.getElementById('setup').style.display = 'none';
                         const passcode = prompt("Enter the unique password provided by the link creator:");
-                        statusHUD.innerText = "Verifying Room Invite...";
+                        statusHUD.innerText = "Verifying Invite Link...";
                         socket.emit('join-room', { roomId, password: passcode, peerId: id });
                     }
                 });
 
-                // Listen for incoming calls
                 myPeer.on('call', (call) => {
                     currentCall = call;
                     call.answer(localStream);
@@ -96,20 +94,21 @@
                 });
 
             } catch (err) {
-                alert("Camera and mic device permissions are mandatory.");
+                alert("Camera and microphone access permissions are mandatory.");
             }
         }
 
-        // Handle Creator Workflow
         document.getElementById('create-btn').onclick = () => {
             const customPassword = prompt("Set a unique password for this specific call:");
-            if (!customPassword) { alert("A password is required to lock the room!"); return; }
+            if (!customPassword) { alert("A password is required!"); return; }
 
             roomId = Math.random().toString(36).substring(2, 11);
-            const inviteLink = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+            
+            // FIXED: Generates an accurate, un-truncated full browser address structure
+            const inviteLink = window.location.origin + window.location.pathname + "?room=" + roomId;
             
             const display = document.getElementById('link-display');
-            display.innerText = "Share link & chosen password privately:\n\n" + inviteLink;
+            display.innerText = "Share link & password privately:\n\n" + inviteLink;
             display.style.display = 'block';
             document.getElementById('setup').style.display = 'none';
 
@@ -121,23 +120,25 @@
             socket.emit('create-room', { roomId, password: customPassword, peerId: myPeer.id });
         };
 
-        // Network Status Router Handles
         socket.on('peer-status-change', (data) => {
-            if (data.connected && roomId && urlParams.get('room')) {
-                statusHUD.innerText = "Friend Joined! Calling...";
-                // Initiate robust peer stream connection
-                const call = myPeer.call(data.targetPeerId, localStream);
-                currentCall = call;
-                call.on('stream', (remoteStream) => {
-                    remoteVideo.srcObject = remoteStream;
-                    statusHUD.innerText = "In Call (Connected)";
-                    statusHUD.style.color = "#34c759";
-                });
-            } else if (!data.connected) {
+            if (data.connected) {
+                statusHUD.innerText = "Friend Joined! Connecting Audio/Video...";
+                statusHUD.style.color = "#34c759";
+                
+                // Only the joiner triggers the outbound call sequence to the creator
+                if (!data.isCreator) {
+                    const call = myPeer.call(data.targetPeerId, localStream);
+                    currentCall = call;
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        statusHUD.innerText = "In Call (Connected)";
+                    });
+                }
+            } else {
                 remoteVideo.srcObject = null;
-                statusHUD.innerText = "Call ended / Link Destroyed";
+                statusHUD.innerText = "Call ended / Link Expired";
                 statusHUD.style.color = "#ff3b30";
-                alert('Session closed. The room and single-use link have been wiped from memory.');
+                alert('The other person disconnected. This single-use room is destroyed.');
                 window.location.href = window.location.origin;
             }
         });
