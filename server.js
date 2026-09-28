@@ -6,6 +6,7 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
+// Enable Cross-Origin requests for mobile socket routing
 const io = new Server(server, {
     cors: {
         origin: "*",
@@ -13,13 +14,16 @@ const io = new Server(server, {
     }
 });
 
+// Mandatory health check route for cloud platform confirmation
 app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// Serve your mobile front-end interface files
 app.use(express.static(path.join(__dirname)));
 
 // 🔒 CHANGE THIS to your private group passcode
-const MASTER_PASSWORD = "SecretGroupPasscode2026"; 
+const MASTER_PASSWORD = "reddy"; 
 
-// Tracks active rooms and their specific lifecycles
+// Tracks active rooms and their lifecycle states in temporary RAM
 const activeRooms = {}; 
 
 io.on('connection', (socket) => {
@@ -33,14 +37,14 @@ io.on('connection', (socket) => {
         socket.join(roomId);
     });
 
-    // Triggered when someone opens a link
+    // Triggered when the partner joins via the shared room link
     socket.on('join-room', ({ roomId, password }) => {
         if (password !== MASTER_PASSWORD) {
             socket.emit('auth-failed', 'Access Denied: Invalid Passcode.');
             return socket.disconnect();
         }
 
-        // Check if the room exists and is valid
+        // Validate if the room exists or is active
         if (!activeRooms[roomId]) {
             socket.emit('room-not-found', 'Link Not Found: This session has expired or never existed.');
             return socket.disconnect();
@@ -51,7 +55,7 @@ io.on('connection', (socket) => {
             return socket.disconnect();
         }
 
-        // If valid, connect the peer and lock down the room
+        // Connect the peer and lock down the room
         socket.join(roomId);
         activeRooms[roomId].status = 'active';
         socket.to(roomId).emit('peer-joined');
@@ -75,5 +79,6 @@ io.on('connection', (socket) => {
     });
 });
 
+// Force bind to all network interfaces for mobile deployment routing
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
