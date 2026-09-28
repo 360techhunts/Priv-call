@@ -5,11 +5,22 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
 
+// Enable Cross-Origin requests for Render's routing
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+
+// Mandatory health check route for cloud platform confirmation
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// Serve your mobile front-end files
 app.use(express.static(path.join(__dirname)));
 
-// 🔒 CHANGE THIS to your own private passcode
+// 🔒 CHANGE THIS to your private group passcode
 const MASTER_PASSWORD = "SecretGroupPasscode2026"; 
 
 const rooms = {};
@@ -41,5 +52,6 @@ io.on('connection', (socket) => {
     });
 });
 
+// Force bind to all network interfaces for mobile distribution
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
