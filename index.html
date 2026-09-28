@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Private Peer Call</title>
-    <!-- You MUST replace this generic jsdelivr link with the actual MeteredRealtime SDK URL -->
-    <script src="https://cdn.jsdelivr.net/npm/metered-realtime"></script>
+    
+    <!-- PeerJS provides the free, serverless signaling layer -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
@@ -32,6 +34,7 @@
             background: rgba(28, 28, 30, 0.95); padding: 20px; border-radius: 20px;
             width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 12px;
             border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         button { 
             background: #34c759; color: white; border: none; padding: 14px; font-size: 16px; 
@@ -42,53 +45,64 @@
             width: 100%; background: #2c2c2e; border: 1px solid rgba(255,255,255,0.2);
             padding: 12px; border-radius: 10px; color: #fff; font-size: 15px; text-align: center;
         }
-        #info-box { font-size: 13px; text-align: left; color: #34c759; margin-top: 5px; line-height: 1.4; word-break: break-all;}
+        #info-box { font-size: 13px; text-align: center; color: #34c759; margin-top: 5px; line-height: 1.4; word-break: break-all;}
+        
+        /* Token Box Styling */
+        .token-box {
+            color: #fff; background: #222; padding: 12px; margin-top: 10px;
+            display: block; border-radius: 8px; cursor: pointer; border: 1px dashed #555;
+            transition: all 0.2s;
+        }
+        .token-box:active { background: #333; border-color: #34c759; }
     </style>
 </head>
 <body>
 
     <div class="video-wrapper">
-        <div id="statusHUD" class="status-hud">Connecting Media...</div>
+        <div id="statusHUD" class="status-hud">Requesting Camera...</div>
+        <!-- playsinline ensures iOS doesn't force fullscreen unexpectedly -->
         <video id="localVideo" autoplay playsinline muted></video>
         <video id="remoteVideo" autoplay playsinline></video>
         
         <div class="controls-overlay">
             <div id="menu" class="menu-box">
-                <input type="password" id="roomPass" placeholder="Set Room Password (UI Only)">
-                <button id="create-btn">1. Create One-Time Call</button>
+                <input type="password" id="roomPass" placeholder="Set Room Password">
+                <button id="create-btn">1. Create Secure Call</button>
                 <div style="text-align: center; color: #8e8e93; font-size: 12px; margin: 4px 0;">— OR UNLOCK AN INVITE —</div>
-                <input type="text" id="inviteToken" placeholder="Paste Private Token String">
-                <button id="join-btn" class="secondary">2. Join Secure Call</button>
+                <input type="text" id="inviteToken" placeholder="Paste Invite Token">
+                <button id="join-btn" class="secondary">2. Join Call</button>
                 <div id="info-box" style="display:none;"></div>
             </div>
         </div>
     </div>
 
     <script>
-        let localStream, peerConnection, client, channel, isCreatorMode;
+        let localStream, peer, activeCall;
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
         const statusHUD = document.getElementById('statusHUD');
         const infoBox = document.getElementById('info-box');
 
+        // Free Google STUN and Metered TURN servers for maximum firewall bypassing
         const rtcConfig = { 
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }, // Fixed STUN syntax
-                { urls: 'turn:staticauth.openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayprojectsecret' },
+                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
             ] 
         };
 
+        // 0. Initialize Media Devices
         async function init() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
-                
-                client = new MeteredRealtime.Client({ apiKey: "public_openrelay_project_key" });
-                
                 statusHUD.innerText = "System Ready";
                 statusHUD.style.color = "#34c759";
             } catch (err) {
-                alert("Camera and mic device permissions must be granted.");
+                alert("Camera and microphone permissions must be granted to use this app.");
+                statusHUD.innerText = "Camera Blocked";
+                statusHUD.style.color = "#ff3b30";
             }
         }
 
@@ -97,25 +111,54 @@
             const password = document.getElementById('roomPass').value.trim();
             if (!password) { alert("Please set a room password first!"); return; }
 
-            isCreatorMode = true;
-            const generatedRoom = Math.random().toString(36).substring(2, 14);
-            
-            // Note: Base64 is not true encryption.
-            const secureToken = btoa(JSON.stringify({ r: generatedRoom, p: password }));
-
-            document.getElementById('create-btn').style.display = 'none';
-            document.getElementById('join-btn').style.display = 'none';
-            document.getElementById('inviteToken').style.display = 'none';
-            document.getElementById('roomPass').style.display = 'none';
-            
-            infoBox.innerHTML = `<strong>Room Live!</strong><br>Send this raw text token to your friend:<br><br><span style='color:#fff;background:#222;padding:6px;display:block;border-radius:6px;'>${secureToken}</span>`;
-            infoBox.style.display = 'block';
-            
-            statusHUD.innerText = "Waiting for friend...";
+            statusHUD.innerText = "Generating Secure Room...";
             statusHUD.style.color = "#ffcc00";
 
-            navigator.clipboard.writeText(secureToken);
-            connectToCluster(generatedRoom);
+            // Initialize PeerJS to connect to the free signaling cloud
+            peer = new Peer(null, { config: rtcConfig });
+
+            // When connected to signaling server, generate token
+            peer.on('open', (id) => {
+                const secureToken = btoa(JSON.stringify({ r: id, p: password }));
+
+                // Hide menu controls
+                document.getElementById('create-btn').style.display = 'none';
+                document.getElementById('join-btn').style.display = 'none';
+                document.getElementById('inviteToken').style.display = 'none';
+                document.getElementById('roomPass').style.display = 'none';
+                
+                // Show Tap-to-Copy token
+                infoBox.innerHTML = `<strong>Room is Live!</strong><br><span style="color:#fff">Send this token to your friend:</span><br>
+                <span class='token-box' onclick='navigator.clipboard.writeText("${secureToken}"); this.style.borderColor="#34c759"; this.style.color="#34c759"; this.innerHTML="Token Copied to Clipboard! 🔒";'>
+                    ${secureToken}<br><br><small style="color:#8e8e93">(Tap to Copy)</small>
+                </span>`;
+                infoBox.style.display = 'block';
+                
+                statusHUD.innerText = "Waiting for friend...";
+            });
+
+            // Listen for incoming calls
+            peer.on('call', (call) => {
+                statusHUD.innerText = "Friend Connecting...";
+                call.answer(localStream); // Answer with our local feed
+                activeCall = call;
+                
+                // Show remote feed when it arrives
+                call.on('stream', (remoteStream) => {
+                    infoBox.style.display = 'none';
+                    document.getElementById('menu').style.display = 'none';
+                    remoteVideo.srcObject = remoteStream;
+                    statusHUD.innerText = "In Call (Secure)";
+                    statusHUD.style.color = "#34c759";
+                });
+
+                call.on('close', handleDisconnect);
+            });
+
+            peer.on('error', (err) => {
+                statusHUD.innerText = "Network Error";
+                statusHUD.style.color = "#ff3b30";
+            });
         };
 
         // 2. Joiner Workflow
@@ -124,74 +167,51 @@
             if (!token) { alert("Please paste the private invite token string!"); return; }
 
             try {
-                isCreatorMode = false;
+                // Decode token to find host's network ID
                 const parsedData = JSON.parse(atob(token));
+                const targetRoom = parsedData.r;
                 
                 document.getElementById('menu').style.display = 'none';
-                statusHUD.innerText = "Verifying Token Integrity...";
-                
-                connectToCluster(parsedData.r);
+                statusHUD.innerText = "Connecting to Host...";
+                statusHUD.style.color = "#ffcc00";
+
+                peer = new Peer(null, { config: rtcConfig });
+
+                peer.on('open', () => {
+                    // Call the host
+                    const call = peer.call(targetRoom, localStream);
+                    activeCall = call;
+
+                    // Show remote feed when it arrives
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        statusHUD.innerText = "In Call (Secure)";
+                        statusHUD.style.color = "#34c759";
+                    });
+
+                    call.on('close', handleDisconnect);
+                });
+
+                peer.on('error', (err) => {
+                    alert("Host is unavailable. They may have closed the tab.");
+                    window.location.reload();
+                });
+
             } catch(e) {
                 alert("Invalid or broken token string!");
                 window.location.reload();
             }
         };
 
-        function connectToCluster(targetRoom) {
-            channel = client.joinChannel(targetRoom);
-            setupPeerConnection();
-
-            channel.on("peer-joined", async () => {
-                statusHUD.innerText = "Friend Connected! Syncing Feeds...";
-                statusHUD.style.color = "#34c759";
-                
-                if (isCreatorMode) {
-                    const offer = await peerConnection.createOffer();
-                    await peerConnection.setLocalDescription(offer);
-                    channel.emit("signal", { sdp: offer });
-                }
-            });
-
-            channel.on("signal", async (data) => {
-                if (data.sdp) {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-                    if (data.sdp.type === 'offer') {
-                        const answer = await peerConnection.createAnswer();
-                        await peerConnection.setLocalDescription(answer);
-                        channel.emit("signal", { sdp: answer });
-                    }
-                } else if (data.candidate) {
-                    try {
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                    } catch(e) {}
-                }
-            });
-
-            channel.on("peer-left", () => {
-                remoteVideo.srcObject = null;
-                statusHUD.innerText = "Expired / Wiped";
-                statusHUD.style.color = "#ff3b30";
-                alert('Call ended. This secure token has been permanently destroyed.');
-                window.location.href = window.location.origin;
-            });
+        function handleDisconnect() {
+            remoteVideo.srcObject = null;
+            statusHUD.innerText = "Call Ended";
+            statusHUD.style.color = "#ff3b30";
+            alert('Call ended. This session is closed.');
+            window.location.reload();
         }
 
-        function setupPeerConnection() {
-            peerConnection = new RTCPeerConnection(rtcConfig);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-            peerConnection.ontrack = (event) => {
-                // Fixed: Assign the first stream in the array
-                remoteVideo.srcObject = event.streams[0]; 
-                statusHUD.innerText = "In Call (Connected)";
-                statusHUD.style.color = "#34c759";
-            };
-
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) channel.emit("signal", { candidate: event.candidate });
-            };
-        }
-
+        // Start requesting camera access immediately
         init();
     </script>
 </body>
