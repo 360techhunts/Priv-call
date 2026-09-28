@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Private Peer-to-Peer Calling</title>
+    <title>Private P2P Call Rooms</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com"></script>
     <style>
@@ -25,25 +25,42 @@
             border: 1px solid rgba(255,255,255,0.2); z-index: 30; color: #ffcc00;
         }
         .controls-overlay { 
-            position: absolute; bottom: 30px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 0 20px; z-index: 20; 
+            position: absolute; bottom: 30px; left: 0; right: 0; display: flex; 
+            flex-direction: column; align-items: center; gap: 15px; padding: 0 20px; z-index: 20; 
+        }
+        .menu-box {
+            background: rgba(28, 28, 30, 0.95); padding: 20px; border-radius: 20px;
+            width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
         button { 
-            background: #34c759; color: white; border: none; padding: 16px 32px; font-size: 16px; font-weight: 600; border-radius: 30px; width: 100%; max-width: 280px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            background: #34c759; color: white; border: none; padding: 14px; font-size: 16px; 
+            font-weight: 600; border-radius: 12px; width: 100%; cursor: pointer;
         }
-        #link-display { 
-            background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); padding: 15px; border-radius: 14px; font-size: 14px; text-align: center; word-break: break-all; border: 1px solid rgba(255,255,255,0.1); width: 100%; max-width: 320px; color: #34c759;
+        button.secondary { background: #007aff; }
+        input {
+            width: 100%; background: #2c2c2e; border: 1px solid rgba(255,255,255,0.2);
+            padding: 12px; border-radius: 10px; color: #fff; font-size: 15px; text-align: center;
         }
+        #info-box { font-size: 14px; text-align: center; color: #34c759; margin-top: 5px; line-height: 1.4;}
     </style>
 </head>
 <body>
 
     <div class="video-wrapper">
-        <div id="statusHUD" class="status-hud">Connecting System...</div>
+        <div id="statusHUD" class="status-hud">Initializing Permissions...</div>
         <video id="localVideo" autoplay playsinline muted></video>
         <video id="remoteVideo" autoplay playsinline></video>
+        
         <div class="controls-overlay">
-            <div id="setup"><button id="create-btn">Create Secure Link</button></div>
-            <div id="link-display" style="display:none;"></div>
+            <div id="menu" class="menu-box">
+                <input type="password" id="roomPass" placeholder="Set/Enter Room Password">
+                <button id="create-btn">1. Create New Call Room</button>
+                <div style="text-align: center; color: #8e8e93; font-size: 12px; margin: 4px 0;">— OR JOIN EXISTING —</div>
+                <input type="number" id="joinPIN" placeholder="Enter 6-Digit Room PIN">
+                <button id="join-btn" class="secondary">2. Join Call Room</button>
+                <div id="info-box" style="display:none;"></div>
+            </div>
         </div>
     </div>
 
@@ -53,17 +70,13 @@
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
         const statusHUD = document.getElementById('statusHUD');
-
-        // Target exact URL parameters safely
-        const urlParams = new URLSearchParams(window.location.search);
-        let roomId = urlParams.get('room');
+        const infoBox = document.getElementById('infoBox');
 
         async function init() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
                 
-                // Initialize clean data pipeline on shared main server port
                 myPeer = new Peer(undefined, {
                     host: window.location.hostname,
                     port: window.location.port || (window.location.protocol === 'https:' ? 443 : 80),
@@ -74,13 +87,6 @@
                 myPeer.on('open', (id) => {
                     statusHUD.innerText = "System Ready";
                     statusHUD.style.color = "#34c759";
-
-                    if (roomId) {
-                        document.getElementById('setup').style.display = 'none';
-                        const passcode = prompt("Enter the unique password provided by the link creator:");
-                        statusHUD.innerText = "Verifying Invite Link...";
-                        socket.emit('join-room', { roomId, password: passcode, peerId: id });
-                    }
                 });
 
                 myPeer.on('call', (call) => {
@@ -94,38 +100,50 @@
                 });
 
             } catch (err) {
-                alert("Camera and microphone access permissions are mandatory.");
+                alert("Camera and microphone permission popups must be accepted.");
             }
         }
 
+        // Creator Flow
         document.getElementById('create-btn').onclick = () => {
-            const customPassword = prompt("Set a unique password for this specific call:");
-            if (!customPassword) { alert("A password is required!"); return; }
+            const password = document.getElementById('roomPass').value.trim();
+            if (!password) { alert("Please type a room password first!"); return; }
 
-            roomId = Math.random().toString(36).substring(2, 11);
+            // Generate an easily readable 6-digit PIN number
+            const generatedPIN = Math.floor(100000 + Math.random() * 900000).toString();
             
-            // FIXED: Generates an accurate, un-truncated full browser address structure
-            const inviteLink = window.location.origin + window.location.pathname + "?room=" + roomId;
+            document.getElementById('create-btn').style.display = 'none';
+            document.getElementById('join-btn').style.display = 'none';
+            document.getElementById('joinPIN').style.display = 'none';
             
-            const display = document.getElementById('link-display');
-            display.innerText = "Share link & password privately:\n\n" + inviteLink;
+            const display = document.getElementById('info-box');
+            display.innerHTML = `<strong>Room Ready!</strong><br>Tell your friend to open the web link and enter:<br><br>PIN: <span style='font-size:18px;color:#fff;'>${generatedPIN}</span><br>Password: <span style='font-size:18px;color:#fff;'>${password}</span>`;
             display.style.display = 'block';
-            document.getElementById('setup').style.display = 'none';
-
-            navigator.clipboard.writeText(inviteLink);
             
-            statusHUD.innerText = "Waiting for friend...";
+            statusHUD.innerText = "Waiting for friend to enter PIN...";
             statusHUD.style.color = "#ffcc00";
 
-            socket.emit('create-room', { roomId, password: customPassword, peerId: myPeer.id });
+            socket.emit('create-room', { roomId: generatedPIN, password: password, peerId: myPeer.id });
+        };
+
+        // Joiner Flow
+        document.getElementById('join-btn').onclick = () => {
+            const password = document.getElementById('roomPass').value.trim();
+            const pin = document.getElementById('joinPIN').value.trim();
+            
+            if (!password || !pin) { alert("Please enter both the Password and the 6-Digit PIN!"); return; }
+
+            document.getElementById('menu').style.display = 'none';
+            statusHUD.innerText = "Verifying PIN Credentials...";
+            
+            socket.emit('join-room', { roomId: pin, password: password, peerId: myPeer.id });
         };
 
         socket.on('peer-status-change', (data) => {
             if (data.connected) {
-                statusHUD.innerText = "Friend Joined! Connecting Audio/Video...";
-                statusHUD.style.color = "#34c759";
+                document.getElementById('menu').style.display = 'none';
+                statusHUD.innerText = "Connecting Streams...";
                 
-                // Only the joiner triggers the outbound call sequence to the creator
                 if (!data.isCreator) {
                     const call = myPeer.call(data.targetPeerId, localStream);
                     currentCall = call;
@@ -134,13 +152,15 @@
                         statusHUD.innerText = "In Call (Connected)";
                     });
                 }
-            } else {
-                remoteVideo.srcObject = null;
-                statusHUD.innerText = "Call ended / Link Expired";
-                statusHUD.style.color = "#ff3b30";
-                alert('The other person disconnected. This single-use room is destroyed.');
-                window.location.href = window.location.origin;
-            }
+            } 
+        });
+
+        socket.on('peer-disconnected', () => {
+            remoteVideo.srcObject = null;
+            statusHUD.innerText = "Call ended / Link Expired";
+            statusHUD.style.color = "#ff3b30";
+            alert('The other person left. This room and PIN are now permanently destroyed.');
+            window.location.href = window.location.origin;
         });
 
         socket.on('auth-error', (msg) => { alert(msg); window.location.reload(); });
