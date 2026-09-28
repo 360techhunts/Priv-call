@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Private Peer Call</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
+            background: #000; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .video-wrapper { flex: 1; position: relative; background: #111; width: 100%; }
+        #remoteVideo { width: 100%; height: 100%; object-fit: cover; background: #1c1c1e; }
+        #localVideo { 
+            position: absolute; top: 20px; right: 20px; width: 100px; height: 150px; 
+            object-fit: cover; border-radius: 12px; border: 2px solid #fff; z-index: 10; transform: scaleX(-1);
+        }
+        .controls-overlay { 
+            position: absolute; bottom: 30px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 0 20px; z-index: 20; 
+        }
+        button { 
+            background: #34c759; color: white; border: none; padding: 16px 32px; font-size: 16px; font-weight: 600; border-radius: 30px; width: 100%; max-width: 280px; -webkit-tap-highlight-color: transparent; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+        #link-display { 
+            background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 15px; border-radius: 14px; font-size: 14px; text-align: center; word-break: break-all; border: 1px solid rgba(255,255,255,0.1); width: 100%; max-width: 320px; color: #34c759;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="video-wrapper">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div class="controls-overlay">
+            <div id="setup"><button id="create-btn">Create Secure Link</button></div>
+            <div id="link-display" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let localStream, peerConnection, userPasscode;
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let roomId = urlParams.get('room');
+
+        const rtcConfig = { iceServers: [{ urls: 'stun:://google.com' }] };
+
+        async function init() {
+            userPasscode = prompt("Enter your private group passcode:");
+            if (!userPasscode) {
+                alert("Passcode required.");
+                return;
+            }
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" }, audio: true 
+                });
+                localVideo.srcObject = localStream;
+
+                if (roomId) {
+                    document.getElementById('setup').style.display = 'none';
+                    socket.emit('join-room', { roomId, password: userPasscode });
+                    setupPeerConnection();
+                }
+            } catch (err) {
+                alert("Camera & microphone permissions are required to use this web app.");
+            }
+        }
+
+        document.getElementById('create-btn').onclick = () => {
+            roomId = Math.random().toString(36).substring(2, 11);
+            const inviteLink = `${window.location.origin}?room=${roomId}`;
+            
+            const display = document.getElementById('link-display');
+            display.innerText = "Link copied! Share it privately:\n" + inviteLink;
+            display.style.display = 'block';
+            document.getElementById('setup').style.display = 'none';
+
+            navigator.clipboard.writeText(inviteLink).then(() => {
+                alert("Invite link copied to clipboard!");
+            });
+
+            socket.emit('join-room', { roomId, password: userPasscode });
+            setupPeerConnection();
+        };
+
+        function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.ontrack = (event) => { remoteVideo.srcObject = event.streams; };
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) socket.emit('signal', { candidate: event.candidate });
+            };
+
+            socket.on('signal', async (data) => {
+                if (data.sdp) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                    if (data.sdp.type === 'offer') {
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        socket.emit('signal', { sdp: answer });
+                    }
+                } else if (data.candidate) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            });
+
+            socket.on('peer-joined', async () => {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('signal', { sdp: offer });
+            });
+
+            socket.on('auth-failed', (msg) => { alert(msg); window.location.reload(); });
+            socket.on('peer-disconnected', () => {
+                remoteVideo.srcObject = null;
+                alert('Call ended. The ephemeral room has been destroyed.');
+                window.location.href = window.location.origin;
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
