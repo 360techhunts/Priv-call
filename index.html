@@ -190,11 +190,17 @@
             });
         }
 
-        function showError(msg) {
-            statusHUD.innerText = "Connection Failed";
-            statusHUD.style.color = "#ff3b30";
-            menu.style.display = 'block';
-            menu.innerHTML = `<h3 style='color:#ff3b30'>${msg}</h3><br><button onclick='window.location.href=window.location.origin+window.location.pathname'>Create Your Own Call</button>`;
+       function showError(msg) {
+            // Instantly destroy the entire app interface
+            document.body.innerHTML = `
+                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #111; color: #888; font-family: monospace;">
+                    404 | link error.
+                </div>
+            `;
+            
+            // OPTIONAL: If you want to violently redirect them away from your site entirely instead, 
+            // delete the code above and uncomment the line below:
+            // window.location.replace("https://google.com");
         }
 
         function endCall() {
