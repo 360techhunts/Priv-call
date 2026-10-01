@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
     <title>Instant Private Call</title>
     
-    <!-- 1. The WebRTC Universal Translator (Ensures Chrome talks perfectly to Safari/Firefox) -->
+    <!-- Cross-Browser Compatibility (Chrome/Safari/Firefox translation) -->
     <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-    <!-- 2. PeerJS Library -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     
     <style>
@@ -15,15 +14,16 @@
         
         body { 
             background: #0a0a0c; color: #fff; 
-            height: 100vh; /* Fallback for older browsers */
-            height: 100dvh; /* Modern mobile dynamic height */
+            height: 100vh; /* Fallback */
+            height: 100dvh; /* Dynamic mobile height */
             display: flex; justify-content: center; align-items: center; overflow: hidden;
         }
 
+        /* Blackout Loading & Error Screen */
         #secure-loading {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100%;
             background: #050505; z-index: 9999; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; color: #fff;
+            justify-content: center; align-items: center; color: #fff; padding: 20px;
         }
 
         #app-container {
@@ -80,6 +80,7 @@
             border: 1px solid rgba(52,199,89,0.3); display: none; cursor: pointer; transition: 0.2s;
         }
 
+        /* Lifted Control Bar */
         .call-controls-bar {
             position: absolute; bottom: 60px; 
             left: 50%; transform: translateX(-50%);
@@ -103,6 +104,7 @@
             background: #ff3b30; border-radius: 50%; border: 2px solid #222; display: none;
         }
 
+        /* See-Through Messenger Chat Drawer */
         #chatPopupOverlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.15); z-index: 45; display: flex; 
@@ -141,6 +143,7 @@
 </head>
 <body>
 
+    <!-- Blackout Overlay (Handles Loading and Error Recovery) -->
     <div id="secure-loading">
         <div style="font-size: 22px; font-weight: 600; margin-bottom: 8px;" id="loading-title">Secure Connection</div>
         <div style="font-size: 14px; color: #888;" id="loading-subtitle">Initializing hardware...</div>
@@ -148,7 +151,7 @@
 
     <div id="app-container">
         <div class="video-wrapper">
-            <!-- Apple Safari compatibility tags added: webkit-playsinline -->
+            <!-- iOS Safari Compatibility Tags -->
             <video id="remoteVideo" autoplay playsinline webkit-playsinline="true"></video>
             <video id="localVideo" autoplay playsinline webkit-playsinline="true" muted></video>
         </div>
@@ -221,6 +224,7 @@
             ] 
         };
 
+        // Deep Privacy: Destroy room instantly on tab close
         window.addEventListener('beforeunload', () => {
             if (activeCall) activeCall.close();
             if (dataConn) dataConn.close();
@@ -242,9 +246,28 @@
                     statusHUD.innerText = "Ready to Create"; statusHUD.style.color = "#fff"; 
                 }
             } catch (err) {
-                document.getElementById('loading-title').innerText = "Access Denied";
-                document.getElementById('loading-subtitle').innerText = "Camera and microphone are required to connect.";
+                // Smart Error Handling
+                let errorMsg = "Camera and microphone are required to connect.";
+                
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    errorMsg = "Permission blocked. Tap the 🔒 lock icon in your browser address bar to allow Camera/Mic, then retry.";
+                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                    errorMsg = "Your camera/mic is in use by another app (like Zoom). Close the other app and retry.";
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    errorMsg = "No camera or microphone was found on this device.";
+                }
+
+                document.getElementById('loading-title').innerText = "Hardware Blocked";
                 document.getElementById('loading-title').style.color = "#ff3b30";
+                
+                document.getElementById('loading-subtitle').innerHTML = `
+                    <div style="text-align: center; max-width: 320px; line-height: 1.5;">
+                        ${errorMsg}
+                    </div>
+                    <button onclick="window.location.reload()" style="margin-top: 25px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); padding: 12px 24px; border-radius: 20px; color: #fff; font-weight: 600; cursor: pointer;">
+                        ↻ Try Again
+                    </button>
+                `;
             }
         }
 
@@ -303,7 +326,7 @@
             });
 
             peer.on('connection', setupDataConnection);
-            peer.on('error', showError);
+            peer.on('error', showError); // Instant kill on error
         };
 
         function startJoinerFlow() {
@@ -318,7 +341,7 @@
                 call.on('stream', (stream) => {
                     remoteVideo.srcObject = stream; 
                     statusHUD.style.opacity = '0'; 
-                    loadingScreen.style.display = 'none';
+                    loadingScreen.style.display = 'none'; // Clear black screen
                     mediaConnected = true;
                     checkAndBurnRoom();
                 });
@@ -326,7 +349,7 @@
                 
                 setupDataConnection(peer.connect(joinRoomId));
             });
-            peer.on('error', showError);
+            peer.on('error', showError); // Instant kill on invalid link
         }
 
         function setupDataConnection(conn) {
@@ -367,11 +390,14 @@
         chatInput.addEventListener('focus', () => { setTimeout(() => { chatMessages.scrollTop = chatMessages.scrollHeight; }, 300); });
         chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('sendBtn').click(); });
 
+        // --- DESTRUCTION FUNCTIONS ---
+        // Instantly ejects user on dead link without rendering the UI
         function showError() { 
             shutOffHardware(); 
             window.location.replace("https://google.com"); 
         }
 
+        // Graceful termination overlay
         function endCallAndDestroy(msg) {
             if (activeCall) activeCall.close(); if (dataConn) dataConn.close(); if (peer) peer.destroy();
             shutOffHardware();
@@ -382,6 +408,7 @@
             setTimeout(() => window.location.replace("https://google.com"), 1500);
         }
 
+        // Hardware hardware kill-switch
         function shutOffHardware() { if (localStream) localStream.getTracks().forEach(t => t.stop()); }
 
         init();
