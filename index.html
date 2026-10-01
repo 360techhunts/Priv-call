@@ -15,14 +15,12 @@
             justify-content: center; align-items: center; overflow: hidden;
         }
 
-        /* Pure Black Overlay to hide the app during verification */
         #secure-loading {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: #050505; z-index: 9999; display: flex; flex-direction: column;
             justify-content: center; align-items: center; color: #fff;
         }
 
-        /* The Mobile Aspect Ratio Container */
         #app-container {
             position: relative; width: 100%; height: 100%; background: #111; overflow: hidden;
         }
@@ -75,22 +73,24 @@
             border: 1px solid rgba(52,199,89,0.3); display: none; cursor: pointer; transition: 0.2s;
         }
 
-        /* Call Controls Bar */
+        /* --- UPDATED: Transparent & Lifted Control Bar --- */
         .call-controls-bar {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            position: absolute; bottom: 60px; /* Moved up to prevent cutoff */
+            left: 50%; transform: translateX(-50%);
             display: flex; justify-content: space-between; gap: 8px; width: 92%; 
-            background: rgba(20, 20, 22, 0.85); padding: 12px; border-radius: 30px; 
-            border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); z-index: 35;
+            background: transparent; /* Removed solid background */
+            padding: 0; z-index: 35;
         }
         .control-btn {
-            flex: 1; background: rgba(255, 255, 255, 0.1); border: none; color: white;
-            padding: 10px 0; border-radius: 20px; font-size: 12px; font-weight: 600;
+            flex: 1; background: rgba(0, 0, 0, 0.4); /* Translucent floating buttons */
+            border: 1px solid rgba(255, 255, 255, 0.15); color: white;
+            padding: 12px 0; border-radius: 20px; font-size: 12px; font-weight: 600;
             cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; 
-            align-items: center; gap: 4px;
+            align-items: center; gap: 4px; backdrop-filter: blur(8px);
         }
         .control-btn:hover { background: rgba(255, 255, 255, 0.2); }
-        .control-btn.off { background: #ff9f0a; color: #000; }
-        .control-btn.end { background: #ff3b30; }
+        .control-btn.off { background: rgba(255, 159, 10, 0.9); color: #000; border: none; }
+        .control-btn.end { background: rgba(255, 59, 48, 0.9); border: none; }
         
         .icon-container { position: relative; font-size: 18px; }
         #chatBadge {
@@ -98,10 +98,10 @@
             background: #ff3b30; border-radius: 50%; border: 2px solid #222; display: none;
         }
 
-        /* Translucent Popup Overlay */
+        /* --- UPDATED: See-Through Chat Popup --- */
         #chatPopupOverlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.1); /* Minimal dimming on the rest of the screen */
             z-index: 45; display: flex; justify-content: center; align-items: center;
             opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
         }
@@ -109,13 +109,13 @@
             opacity: 1; pointer-events: auto;
         }
 
-        /* The Chat Popup Box */
         #chatPanel {
-            width: 85%; height: 65%; max-height: 500px;
-            background: rgba(28, 28, 30, 0.75); backdrop-filter: blur(30px);
-            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 24px;
+            width: 90%; height: 70%; max-height: 500px;
+            /* High transparency, low blur so video is clearly visible underneath */
+            background: rgba(20, 20, 22, 0.35); backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px;
             display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
             transform: scale(0.95); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         #chatPopupOverlay.open #chatPanel {
@@ -123,25 +123,31 @@
         }
         
         .chat-header {
-            padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 14px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex; justify-content: space-between; align-items: center; 
-            font-size: 15px; font-weight: 600;
+            font-size: 15px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
         }
-        .chat-close-btn { background: rgba(255,255,255,0.1); border: none; border-radius: 50%; width: 30px; height: 30px; color: #fff; font-size: 16px; cursor: pointer; }
-        .chat-messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .chat-bubble { max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; word-break: break-word; }
-        .chat-bubble.local { background: #0a84ff; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-        .chat-bubble.remote { background: #2c2c2e; color: #fff; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .chat-close-btn { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 30px; height: 30px; color: #fff; font-size: 16px; cursor: pointer; }
         
-        .chat-input-bar { display: flex; gap: 10px; padding: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05); background: rgba(0, 0, 0, 0.2); }
-        #chatInput { flex: 1; background: #1c1c1e; border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; padding: 12px 16px; border-radius: 24px; font-size: 15px; outline: none; }
-        #chatInput:focus { border-color: #0a84ff; }
-        #sendBtn { background: #34c759; border: none; color: white; padding: 0 16px; border-radius: 24px; font-weight: 600; font-size: 14px; cursor: pointer; }
+        .chat-messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .chat-bubble { 
+            max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 14px; 
+            line-height: 1.4; word-break: break-word; text-shadow: 0 1px 2px rgba(0,0,0,0.3); 
+        }
+        .chat-bubble.local { background: rgba(10, 132, 255, 0.8); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .chat-bubble.remote { background: rgba(44, 44, 46, 0.8); color: #fff; align-self: flex-start; border-bottom-left-radius: 4px; }
+        
+        .chat-input-bar { display: flex; gap: 10px; padding: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1); background: transparent; }
+        #chatInput { 
+            flex: 1; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); 
+            color: #fff; padding: 12px 16px; border-radius: 24px; font-size: 15px; outline: none; 
+        }
+        #chatInput:focus { border-color: #0a84ff; background: rgba(0,0,0,0.7); }
+        #sendBtn { background: rgba(52, 199, 89, 0.9); border: none; color: white; padding: 0 16px; border-radius: 24px; font-weight: 600; font-size: 14px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <!-- Pure Black Loading Screen (Hides App Interface) -->
     <div id="secure-loading">
         <div style="font-size: 22px; font-weight: 600; margin-bottom: 8px;" id="loading-title">Secure Connection</div>
         <div style="font-size: 14px; color: #888;" id="loading-subtitle">Initializing hardware...</div>
@@ -164,7 +170,7 @@
             </div>
         </div>
 
-        <!-- Call Controls Bar (Now with Chat Button) -->
+        <!-- Controls Bar -->
         <div class="call-controls-bar" id="mediaControls" style="display: none;">
             <button id="toggleAudioBtn" class="control-btn"><div class="icon-container">🎙</div> Mute</button>
             <button id="toggleVideoBtn" class="control-btn"><div class="icon-container">📷</div> Video</button>
@@ -189,7 +195,6 @@
                 </div>
             </div>
         </div>
-
     </div> 
 
     <script>
@@ -254,7 +259,6 @@
             }
         }
 
-        // --- MEDIA CONTROLS ---
         toggleAudioBtn.onclick = () => {
             const track = localStream.getAudioTracks()[0];
             if (track) {
@@ -276,14 +280,12 @@
 
         endCallBtn.onclick = () => endCallAndDestroy("Call Ended.");
 
-        // --- ROOM BURN LOGIC ---
         function checkAndBurnRoom() {
             if (mediaConnected && dataConnected && !peer.disconnected) {
                 setTimeout(() => { if (!peer.disconnected) peer.disconnect(); }, 1500);
             }
         }
 
-        // --- HOST FLOW ---
         actionBtn.onclick = () => {
             if (joinRoomId) return;
             actionBtn.innerText = "Generating..."; actionBtn.disabled = true;
@@ -315,7 +317,6 @@
             peer.on('error', showError);
         };
 
-        // --- JOINER FLOW ---
         function startJoinerFlow() {
             mainOverlay.style.display = 'none'; 
             peer = new Peer(null, { config: rtcConfig });
@@ -339,7 +340,6 @@
             peer.on('error', showError);
         }
 
-        // --- CHAT ENGINE ---
         function setupDataConnection(conn) {
             dataConn = conn;
             dataConn.on('open', () => {
@@ -367,24 +367,20 @@
             bubble.textContent = text; chatMessages.appendChild(bubble); chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        // Popup Logics
         chatToggleBtn.onclick = () => { 
             chatPopupOverlay.classList.add('open'); 
             chatBadge.style.display = 'none'; 
             setTimeout(() => chatInput.focus(), 300); 
         };
 
-        // Close on 'X' button
         closeChatBtn.onclick = () => chatPopupOverlay.classList.remove('open');
         
-        // Close when clicking the dark overlay background outside the panel
         chatPopupOverlay.onclick = (e) => {
             if (e.target === chatPopupOverlay) chatPopupOverlay.classList.remove('open');
         };
 
         chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('sendBtn').click(); });
 
-        // --- DESTRUCTION FUNCTIONS ---
         function showError() { 
             shutOffHardware(); 
             window.location.replace("https://google.com"); 
