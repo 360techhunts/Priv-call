@@ -12,27 +12,29 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         
-        body { 
-            background: #0a0a0c; color: #fff; 
-            height: 100vh; /* Fallback */
-            height: 100dvh; /* Dynamic mobile height */
-            display: flex; justify-content: center; align-items: center; overflow: hidden;
+        /* 1. FIXED VIEWPORT: Locks perfectly to all browsers, preventing scroll-off */
+        html, body {
+            width: 100%; height: 100vh; height: 100dvh; 
+            margin: 0; padding: 0; overflow: hidden;
+            background: #0a0a0c; color: #fff;
         }
 
-        /* Blackout Loading & Error Screen */
         #secure-loading {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100%;
             background: #050505; z-index: 9999; display: flex; flex-direction: column;
             justify-content: center; align-items: center; color: #fff; padding: 20px;
         }
 
+        /* App container perfectly matches the screen boundaries */
         #app-container {
-            position: relative; width: 100%; height: 100%; background: #111; overflow: hidden;
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+            background: #111; overflow: hidden;
         }
 
         @media (min-width: 500px) {
             #app-container {
                 width: 400px; height: 85vh; height: 85dvh; max-height: 850px; 
+                top: 50%; left: 50%; transform: translate(-50%, -50%);
                 border-radius: 40px; border: 8px solid #1c1c1e;
                 box-shadow: 0 25px 60px rgba(0,0,0,0.8);
             }
@@ -80,19 +82,24 @@
             border: 1px solid rgba(52,199,89,0.3); display: none; cursor: pointer; transition: 0.2s;
         }
 
-        /* Lifted Control Bar */
+        /* 2. FIXED CONTROLS: safe-area-inset prevents iPhone bottom-bar from covering it */
         .call-controls-bar {
-            position: absolute; bottom: 60px; 
+            position: absolute; 
+            bottom: calc(env(safe-area-inset-bottom, 20px) + 20px); 
             left: 50%; transform: translateX(-50%);
-            display: flex; justify-content: space-between; gap: 8px; width: 92%; 
-            background: transparent; padding: 0; z-index: 35;
+            display: flex; justify-content: space-between; gap: 8px; width: 92%; max-width: 380px;
+            background: transparent; padding: 0; z-index: 100;
         }
+        .call-controls-bar.hidden-bar { display: none !important; }
+
+        /* 3. FIXED BUTTONS: min-height prevents Firefox from collapsing them */
         .control-btn {
             flex: 1; background: rgba(0, 0, 0, 0.4); 
             border: 1px solid rgba(255, 255, 255, 0.15); color: white;
-            padding: 12px 0; border-radius: 20px; font-size: 12px; font-weight: 600;
+            padding: 10px 4px; border-radius: 20px; font-size: 12px; font-weight: 600;
             cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; 
-            align-items: center; gap: 4px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            align-items: center; justify-content: center; min-height: 60px; gap: 4px; 
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
         }
         .control-btn:hover { background: rgba(255, 255, 255, 0.2); }
         .control-btn.off { background: rgba(255, 159, 10, 0.9); color: #000; border: none; }
@@ -104,14 +111,19 @@
             background: #ff3b30; border-radius: 50%; border: 2px solid #222; display: none;
         }
 
-        /* See-Through Messenger Chat Drawer */
+        /* 4. FIXED GHOST LAYER: Safari 'visibility' fix so it doesn't block clicks */
         #chatPopupOverlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.15); z-index: 45; display: flex; 
-            justify-content: center; align-items: flex-end; padding-bottom: 12px; 
-            opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+            background: rgba(0, 0, 0, 0.15); z-index: 105; display: flex; 
+            justify-content: center; align-items: flex-end; 
+            padding-bottom: env(safe-area-inset-bottom, 12px); 
+            visibility: hidden; opacity: 0; 
+            transition: opacity 0.3s ease, visibility 0s linear 0.3s;
         }
-        #chatPopupOverlay.open { opacity: 1; pointer-events: auto; }
+        #chatPopupOverlay.open { 
+            visibility: visible; opacity: 1; 
+            transition: opacity 0.3s ease, visibility 0s linear 0s; 
+        }
 
         #chatPanel {
             width: 94%; height: 60%; max-height: 450px;
@@ -143,7 +155,6 @@
 </head>
 <body>
 
-    <!-- Blackout Overlay (Handles Loading and Error Recovery) -->
     <div id="secure-loading">
         <div style="font-size: 22px; font-weight: 600; margin-bottom: 8px;" id="loading-title">Secure Connection</div>
         <div style="font-size: 14px; color: #888;" id="loading-subtitle">Initializing hardware...</div>
@@ -151,7 +162,6 @@
 
     <div id="app-container">
         <div class="video-wrapper">
-            <!-- iOS Safari Compatibility Tags -->
             <video id="remoteVideo" autoplay playsinline webkit-playsinline="true"></video>
             <video id="localVideo" autoplay playsinline webkit-playsinline="true" muted></video>
         </div>
@@ -167,7 +177,7 @@
             </div>
         </div>
 
-        <div class="call-controls-bar" id="mediaControls" style="display: none;">
+        <div class="call-controls-bar hidden-bar" id="mediaControls">
             <button id="toggleAudioBtn" class="control-btn"><div class="icon-container">🎙</div> Mute</button>
             <button id="toggleVideoBtn" class="control-btn"><div class="icon-container">📷</div> Video</button>
             <button id="chatToggleBtn" class="control-btn"><div class="icon-container">💬<div id="chatBadge"></div></div> Chat</button>
@@ -224,7 +234,6 @@
             ] 
         };
 
-        // Deep Privacy: Destroy room instantly on tab close
         window.addEventListener('beforeunload', () => {
             if (activeCall) activeCall.close();
             if (dataConn) dataConn.close();
@@ -236,7 +245,7 @@
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
-                mediaControls.style.display = 'flex';
+                mediaControls.classList.remove('hidden-bar'); // Safely reveals the bar
                 
                 if (joinRoomId) {
                     document.getElementById('loading-subtitle').innerText = "Verifying secure link...";
@@ -246,13 +255,12 @@
                     statusHUD.innerText = "Ready to Create"; statusHUD.style.color = "#fff"; 
                 }
             } catch (err) {
-                // Smart Error Handling
                 let errorMsg = "Camera and microphone are required to connect.";
                 
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                     errorMsg = "Permission blocked. Tap the 🔒 lock icon in your browser address bar to allow Camera/Mic, then retry.";
                 } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-                    errorMsg = "Your camera/mic is in use by another app (like Zoom). Close the other app and retry.";
+                    errorMsg = "Your camera/mic is in use by another app. Close the other app and retry.";
                 } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
                     errorMsg = "No camera or microphone was found on this device.";
                 }
@@ -261,9 +269,7 @@
                 document.getElementById('loading-title').style.color = "#ff3b30";
                 
                 document.getElementById('loading-subtitle').innerHTML = `
-                    <div style="text-align: center; max-width: 320px; line-height: 1.5;">
-                        ${errorMsg}
-                    </div>
+                    <div style="text-align: center; max-width: 320px; line-height: 1.5;">${errorMsg}</div>
                     <button onclick="window.location.reload()" style="margin-top: 25px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); padding: 12px 24px; border-radius: 20px; color: #fff; font-weight: 600; cursor: pointer;">
                         ↻ Try Again
                     </button>
@@ -319,14 +325,13 @@
                 call.answer(localStream); activeCall = call; mainOverlay.style.display = 'none';
                 call.on('stream', (stream) => {
                     remoteVideo.srcObject = stream; statusHUD.style.opacity = '0';
-                    mediaConnected = true;
-                    checkAndBurnRoom();
+                    mediaConnected = true; checkAndBurnRoom();
                 });
                 call.on('close', () => endCallAndDestroy("The other person ended the call."));
             });
 
             peer.on('connection', setupDataConnection);
-            peer.on('error', showError); // Instant kill on error
+            peer.on('error', showError);
         };
 
         function startJoinerFlow() {
@@ -341,23 +346,19 @@
                 call.on('stream', (stream) => {
                     remoteVideo.srcObject = stream; 
                     statusHUD.style.opacity = '0'; 
-                    loadingScreen.style.display = 'none'; // Clear black screen
-                    mediaConnected = true;
-                    checkAndBurnRoom();
+                    loadingScreen.style.display = 'none'; 
+                    mediaConnected = true; checkAndBurnRoom();
                 });
                 call.on('close', () => endCallAndDestroy("The other person ended the call."));
                 
                 setupDataConnection(peer.connect(joinRoomId));
             });
-            peer.on('error', showError); // Instant kill on invalid link
+            peer.on('error', showError);
         }
 
         function setupDataConnection(conn) {
             dataConn = conn;
-            dataConn.on('open', () => {
-                dataConnected = true;
-                checkAndBurnRoom();
-            });
+            dataConn.on('open', () => { dataConnected = true; checkAndBurnRoom(); });
             dataConn.on('data', (data) => {
                 if (data.type === 'chat') { 
                     appendMessage(data.text, 'remote'); 
@@ -390,25 +391,17 @@
         chatInput.addEventListener('focus', () => { setTimeout(() => { chatMessages.scrollTop = chatMessages.scrollHeight; }, 300); });
         chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('sendBtn').click(); });
 
-        // --- DESTRUCTION FUNCTIONS ---
-        // Instantly ejects user on dead link without rendering the UI
-        function showError() { 
-            shutOffHardware(); 
-            window.location.replace("https://google.com"); 
-        }
+        function showError() { shutOffHardware(); window.location.replace("https://google.com"); }
 
-        // Graceful termination overlay
         function endCallAndDestroy(msg) {
             if (activeCall) activeCall.close(); if (dataConn) dataConn.close(); if (peer) peer.destroy();
             shutOffHardware();
             
             loadingScreen.innerHTML = `<div style="font-size:16px; color:#ff3b30; font-family:monospace;">${msg}<br><br>Ejecting from session...</div>`;
             loadingScreen.style.display = 'flex';
-            
             setTimeout(() => window.location.replace("https://google.com"), 1500);
         }
 
-        // Hardware hardware kill-switch
         function shutOffHardware() { if (localStream) localStream.getTracks().forEach(t => t.stop()); }
 
         init();
