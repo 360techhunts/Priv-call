@@ -5,19 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
     <title>Instant Private Call</title>
     
+    <!-- 1. The WebRTC Universal Translator (Ensures Chrome talks perfectly to Safari/Firefox) -->
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <!-- 2. PeerJS Library -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         
-        /* Use 100dvh so the app resizes perfectly when the mobile keyboard opens */
         body { 
-            background: #0a0a0c; color: #fff; height: 100dvh; display: flex; 
-            justify-content: center; align-items: center; overflow: hidden;
+            background: #0a0a0c; color: #fff; 
+            height: 100vh; /* Fallback for older browsers */
+            height: 100dvh; /* Modern mobile dynamic height */
+            display: flex; justify-content: center; align-items: center; overflow: hidden;
         }
 
         #secure-loading {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100%;
             background: #050505; z-index: 9999; display: flex; flex-direction: column;
             justify-content: center; align-items: center; color: #fff;
         }
@@ -28,7 +32,7 @@
 
         @media (min-width: 500px) {
             #app-container {
-                width: 400px; height: 85dvh; max-height: 850px; 
+                width: 400px; height: 85vh; height: 85dvh; max-height: 850px; 
                 border-radius: 40px; border: 8px solid #1c1c1e;
                 box-shadow: 0 25px 60px rgba(0,0,0,0.8);
             }
@@ -49,7 +53,8 @@
             position: absolute; top: 25px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 30px; 
             font-size: 13px; font-weight: 600; border: 1px solid rgba(255,255,255,0.15); 
-            z-index: 30; backdrop-filter: blur(10px); white-space: nowrap; transition: 0.3s;
+            z-index: 30; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); 
+            white-space: nowrap; transition: 0.3s;
         }
 
         .controls-overlay { 
@@ -59,7 +64,8 @@
         .menu-box {
             background: rgba(28, 28, 30, 0.7); padding: 30px 24px; border-radius: 24px;
             width: 100%; text-align: center; border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(20px); box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); 
+            box-shadow: 0 15px 40px rgba(0,0,0,0.5);
         }
         button.primary-btn { 
             background: linear-gradient(135deg, #34c759, #2eb150); color: white; border: none; 
@@ -78,15 +84,14 @@
             position: absolute; bottom: 60px; 
             left: 50%; transform: translateX(-50%);
             display: flex; justify-content: space-between; gap: 8px; width: 92%; 
-            background: transparent; 
-            padding: 0; z-index: 35;
+            background: transparent; padding: 0; z-index: 35;
         }
         .control-btn {
             flex: 1; background: rgba(0, 0, 0, 0.4); 
             border: 1px solid rgba(255, 255, 255, 0.15); color: white;
             padding: 12px 0; border-radius: 20px; font-size: 12px; font-weight: 600;
             cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; 
-            align-items: center; gap: 4px; backdrop-filter: blur(8px);
+            align-items: center; gap: 4px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
         }
         .control-btn:hover { background: rgba(255, 255, 255, 0.2); }
         .control-btn.off { background: rgba(255, 159, 10, 0.9); color: #000; border: none; }
@@ -98,32 +103,23 @@
             background: #ff3b30; border-radius: 50%; border: 2px solid #222; display: none;
         }
 
-        /* --- UPDATED: Native Messenger Chat Popup --- */
         #chatPopupOverlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.15); 
-            z-index: 45; display: flex; justify-content: center; 
-            align-items: flex-end; /* Anchors the chat box to the bottom */
-            padding-bottom: 12px; /* Slight gap from the absolute bottom */
+            background: rgba(0, 0, 0, 0.15); z-index: 45; display: flex; 
+            justify-content: center; align-items: flex-end; padding-bottom: 12px; 
             opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
         }
-        #chatPopupOverlay.open {
-            opacity: 1; pointer-events: auto;
-        }
+        #chatPopupOverlay.open { opacity: 1; pointer-events: auto; }
 
         #chatPanel {
             width: 94%; height: 60%; max-height: 450px;
-            /* Messenger glassmorphism: deeply blurred but translucent */
             background: rgba(28, 28, 30, 0.65); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px;
             display: flex; flex-direction: column; overflow: hidden;
             box-shadow: 0 15px 40px rgba(0,0,0,0.5);
-            /* Slide up from the bottom like a drawer */
             transform: translateY(120%); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.1);
         }
-        #chatPopupOverlay.open #chatPanel {
-            transform: translateY(0);
-        }
+        #chatPopupOverlay.open #chatPanel { transform: translateY(0); }
         
         .chat-header {
             padding: 14px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -133,18 +129,12 @@
         .chat-close-btn { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 30px; height: 30px; color: #fff; font-size: 16px; cursor: pointer; }
         
         .chat-messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
-        .chat-bubble { 
-            max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 14px; 
-            line-height: 1.4; word-break: break-word; text-shadow: 0 1px 2px rgba(0,0,0,0.3); 
-        }
+        .chat-bubble { max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; word-break: break-word; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
         .chat-bubble.local { background: rgba(10, 132, 255, 0.9); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
         .chat-bubble.remote { background: rgba(60, 60, 62, 0.9); color: #fff; align-self: flex-start; border-bottom-left-radius: 4px; }
         
         .chat-input-bar { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid rgba(255, 255, 255, 0.1); background: transparent; }
-        #chatInput { 
-            flex: 1; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); 
-            color: #fff; padding: 12px 16px; border-radius: 24px; font-size: 15px; outline: none; 
-        }
+        #chatInput { flex: 1; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; padding: 12px 16px; border-radius: 24px; font-size: 15px; outline: none; }
         #chatInput:focus { border-color: #0a84ff; background: rgba(0,0,0,0.7); }
         #sendBtn { background: rgba(52, 199, 89, 0.9); border: none; color: white; padding: 0 16px; border-radius: 24px; font-weight: 600; font-size: 14px; cursor: pointer; }
     </style>
@@ -158,8 +148,9 @@
 
     <div id="app-container">
         <div class="video-wrapper">
-            <video id="remoteVideo" autoplay playsinline></video>
-            <video id="localVideo" autoplay playsinline muted></video>
+            <!-- Apple Safari compatibility tags added: webkit-playsinline -->
+            <video id="remoteVideo" autoplay playsinline webkit-playsinline="true"></video>
+            <video id="localVideo" autoplay playsinline webkit-playsinline="true" muted></video>
         </div>
 
         <div id="statusHUD" class="status-hud" style="color: #ffcc00;">Requesting Camera...</div>
@@ -176,10 +167,7 @@
         <div class="call-controls-bar" id="mediaControls" style="display: none;">
             <button id="toggleAudioBtn" class="control-btn"><div class="icon-container">🎙</div> Mute</button>
             <button id="toggleVideoBtn" class="control-btn"><div class="icon-container">📷</div> Video</button>
-            <button id="chatToggleBtn" class="control-btn">
-                <div class="icon-container">💬<div id="chatBadge"></div></div> 
-                Chat
-            </button>
+            <button id="chatToggleBtn" class="control-btn"><div class="icon-container">💬<div id="chatBadge"></div></div> Chat</button>
             <button id="endCallBtn" class="control-btn end"><div class="icon-container">☎️</div> End</button>
         </div>
 
@@ -371,23 +359,12 @@
         chatToggleBtn.onclick = () => { 
             chatPopupOverlay.classList.add('open'); 
             chatBadge.style.display = 'none'; 
-            // Ensures keyboard doesn't hide messages on mobile
-            setTimeout(() => {
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }, 300);
+            setTimeout(() => { chatMessages.scrollTop = chatMessages.scrollHeight; }, 300);
         };
 
         closeChatBtn.onclick = () => chatPopupOverlay.classList.remove('open');
-        
-        chatPopupOverlay.onclick = (e) => {
-            if (e.target === chatPopupOverlay) chatPopupOverlay.classList.remove('open');
-        };
-
-        // Scroll to newest message when keyboard is opened on mobile
-        chatInput.addEventListener('focus', () => {
-            setTimeout(() => { chatMessages.scrollTop = chatMessages.scrollHeight; }, 300);
-        });
-
+        chatPopupOverlay.onclick = (e) => { if (e.target === chatPopupOverlay) chatPopupOverlay.classList.remove('open'); };
+        chatInput.addEventListener('focus', () => { setTimeout(() => { chatMessages.scrollTop = chatMessages.scrollHeight; }, 300); });
         chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('sendBtn').click(); });
 
         function showError() { 
