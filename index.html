@@ -15,31 +15,80 @@
         #localVideo { 
             position: absolute; top: 20px; right: 20px; width: 100px; height: 150px; 
             object-fit: cover; border-radius: 12px; border: 2px solid #fff; z-index: 10; transform: scaleX(-1);
-            background: #000;
+            background: #000; transition: 0.3s;
         }
+        #localVideo.hidden { opacity: 0; pointer-events: none; }
+        
         .status-hud {
             position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 8px 16px;
             border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid rgba(255,255,255,0.2); z-index: 30;
         }
         .controls-overlay { 
-            position: absolute; bottom: 40px; left: 0; right: 0; display: flex; 
-            flex-direction: column; align-items: center; z-index: 20; padding: 0 20px;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            display: flex; flex-direction: column; align-items: center; z-index: 20; padding: 0 20px; width: 100%;
         }
         .menu-box {
             background: rgba(28, 28, 30, 0.95); padding: 24px; border-radius: 20px;
             width: 100%; max-width: 340px; text-align: center; border: 1px solid rgba(255,255,255,0.1);
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-        button { 
+        button.primary-btn { 
             background: #34c759; color: white; border: none; padding: 16px; font-size: 16px; 
             font-weight: 600; border-radius: 12px; width: 100%; cursor: pointer; transition: 0.2s;
         }
-        button:active { transform: scale(0.98); }
+        button.primary-btn:active { transform: scale(0.98); }
         .link-box {
             background: #222; padding: 12px; border-radius: 8px; margin-top: 15px;
             font-family: monospace; font-size: 13px; color: #34c759; word-break: break-all;
             border: 1px dashed #555; display: none; cursor: pointer;
         }
+
+        .call-controls-bar {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 12px; background: rgba(28, 28, 30, 0.85);
+            padding: 12px 20px; border-radius: 30px; border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px); z-index: 35;
+        }
+        .control-btn {
+            background: rgba(255, 255, 255, 0.15); border: none; color: white;
+            padding: 10px 16px; border-radius: 20px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px;
+        }
+        .control-btn:hover { background: rgba(255, 255, 255, 0.25); }
+        .control-btn.off { background: #ffcc00; color: #000; }
+        .control-btn.end { background: #ff3b30; }
+
+        #chatToggleBtn {
+            display: none; position: absolute; bottom: 25px; right: 25px;
+            width: 54px; height: 54px; border-radius: 50%; background: rgba(28, 28, 30, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.25); color: #fff; font-size: 22px;
+            cursor: pointer; z-index: 40; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            align-items: center; justify-content: center; backdrop-filter: blur(8px);
+        }
+        #chatBadge {
+            position: absolute; top: -2px; right: -2px; width: 14px; height: 14px;
+            background: #ff3b30; border-radius: 50%; border: 2px solid #000; display: none;
+        }
+
+        #chatPanel {
+            display: none; position: absolute; bottom: 90px; right: 20px;
+            width: 320px; height: 420px; max-width: calc(100vw - 40px);
+            background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 18px;
+            flex-direction: column; overflow: hidden; z-index: 45; box-shadow: 0 12px 35px rgba(0,0,0,0.7);
+        }
+        .chat-header {
+            padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600;
+        }
+        .chat-close-btn { background: transparent; border: none; color: #8e8e93; font-size: 20px; cursor: pointer; }
+        .chat-messages { flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .chat-bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-size: 14px; line-height: 1.35; word-break: break-word; }
+        .chat-bubble.local { background: #007aff; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .chat-bubble.remote { background: #3a3a3c; color: #fff; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .chat-input-bar { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1); background: rgba(0, 0, 0, 0.3); }
+        #chatInput { flex: 1; background: #1c1c1e; border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; padding: 10px 14px; border-radius: 20px; font-size: 14px; outline: none; }
+        #sendBtn { background: #34c759; border: none; color: white; padding: 0 16px; border-radius: 20px; font-weight: 600; font-size: 13px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -49,42 +98,86 @@
         <video id="localVideo" autoplay playsinline muted></video>
         <video id="remoteVideo" autoplay playsinline></video>
         
-        <div class="controls-overlay">
+        <div class="controls-overlay" id="mainOverlay">
             <div id="menu" class="menu-box">
                 <h3 style="margin-bottom: 15px; font-size: 18px;">Instant P2P Call</h3>
-                <p style="font-size: 14px; color: #8e8e93; margin-bottom: 20px;" id="menu-desc">Create a secure, one-time link.</p>
-                
-                <button id="action-btn">Create Call Link</button>
+                <p style="font-size: 14px; color: #8e8e93; margin-bottom: 20px;" id="menu-desc">Create a secure, single-use link.</p>
+                <button id="action-btn" class="primary-btn">Create Call Link</button>
                 <div id="link-box" class="link-box"></div>
+            </div>
+        </div>
+
+        <div class="call-controls-bar" id="mediaControls" style="display: none;">
+            <button id="toggleAudioBtn" class="control-btn">🎙 Mute</button>
+            <button id="toggleVideoBtn" class="control-btn">📷 Camera Off</button>
+            <button id="endCallBtn" class="control-btn end">☎️ End Call</button>
+        </div>
+
+        <button id="chatToggleBtn" title="Toggle Chat">💬<div id="chatBadge"></div></button>
+
+        <div id="chatPanel">
+            <div class="chat-header">
+                <span>Direct P2P Chat 🔒</span>
+                <button class="chat-close-btn" id="closeChatBtn">&times;</button>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-bar">
+                <input type="text" id="chatInput" placeholder="Type a message..." maxlength="500" autocomplete="off">
+                <button id="sendBtn">Send</button>
             </div>
         </div>
     </div>
 
-<script>
-        let localStream, peer, activeCall;
+    <script>
+        let localStream, peer, activeCall, dataConn;
+        let isAudioMuted = false;
+        let isVideoOff = false;
+
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
         const statusHUD = document.getElementById('statusHUD');
         const menu = document.getElementById('menu');
+        const mainOverlay = document.getElementById('mainOverlay');
+        const mediaControls = document.getElementById('mediaControls');
         const actionBtn = document.getElementById('action-btn');
         const linkBox = document.getElementById('link-box');
 
-        // Check if user is clicking an invite link
+        const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+        const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+
+        const chatToggleBtn = document.getElementById('chatToggleBtn');
+        const chatBadge = document.getElementById('chatBadge');
+        const chatPanel = document.getElementById('chatPanel');
+        const closeChatBtn = document.getElementById('closeChatBtn');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        let isChatOpen = false;
+
         const urlParams = new URLSearchParams(window.location.search);
         const joinRoomId = urlParams.get('room');
 
         const rtcConfig = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayprojectsecret' }
             ] 
         };
+
+        // --- EXTREME PRIVACY: Burn room immediately on tab close ---
+        window.addEventListener('beforeunload', () => {
+            if (activeCall) activeCall.close();
+            if (dataConn) dataConn.close();
+            if (peer) peer.destroy();
+            shutOffHardware();
+        });
 
         async function init() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
                 localVideo.srcObject = localStream;
+                mediaControls.style.display = 'flex';
                 
                 if (joinRoomId) {
                     startJoinerFlow();
@@ -99,10 +192,35 @@
             }
         }
 
+        // --- MEDIA TOGGLES ---
+        toggleAudioBtn.onclick = () => {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                isAudioMuted = !isAudioMuted;
+                audioTrack.enabled = !isAudioMuted;
+                toggleAudioBtn.innerHTML = isAudioMuted ? "🔇 Unmuted" : "🎙️ Mute";
+                toggleAudioBtn.classList.toggle('off', isAudioMuted);
+            }
+        };
+
+        toggleVideoBtn.onclick = () => {
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                isVideoOff = !isVideoOff;
+                videoTrack.enabled = !isVideoOff;
+                toggleVideoBtn.innerHTML = isVideoOff ? "📹 Camera On" : "📷 Camera Off";
+                toggleVideoBtn.classList.toggle('off', isVideoOff);
+                localVideo.classList.toggle('hidden', isVideoOff);
+            }
+        };
+
+        endCallBtn.onclick = () => {
+            endCallAndDestroy("Call Ended.");
+        };
+
         // --- HOST FLOW ---
         actionBtn.onclick = () => {
             if (joinRoomId) return;
-            
             actionBtn.innerText = "Generating...";
             actionBtn.disabled = true;
 
@@ -111,13 +229,11 @@
 
             peer.on('open', (id) => {
                 const inviteUrl = window.location.origin + window.location.pathname + '?room=' + id;
-                
                 actionBtn.style.display = 'none';
-                document.getElementById('menu-desc').innerText = "Send this link to your friend. It will expire once they join.";
+                document.getElementById('menu-desc').innerText = "Send this link. It permanently burns when they join.";
                 
                 linkBox.style.display = 'block';
                 linkBox.innerText = inviteUrl + "\n\n(Tap to Copy Link)";
-                
                 linkBox.onclick = () => {
                     navigator.clipboard.writeText(inviteUrl);
                     linkBox.style.color = "#fff";
@@ -131,35 +247,30 @@
             peer.on('call', (call) => {
                 call.answer(localStream);
                 activeCall = call;
-                menu.style.display = 'none';
+                mainOverlay.style.display = 'none';
 
                 call.on('stream', (remoteStream) => {
                     remoteVideo.srcObject = remoteStream;
                     statusHUD.innerText = "Securely Connected";
                     statusHUD.style.color = "#34c759";
+                    chatToggleBtn.style.display = 'flex';
 
-                    // THE FIX: Wait 3 seconds AFTER the video starts playing to destroy the room.
-                    // This gives the browsers enough time to stabilize the WebRTC connection.
+                    // Burn the room on the server after successful connection
                     setTimeout(() => {
-                        if (!peer.disconnected) {
-                            peer.disconnect();
-                            console.log("Room locked and destroyed. Link is now single-use.");
-                        }
+                        if (!peer.disconnected) peer.disconnect();
                     }, 3000);
                 });
 
-                call.on('close', endCall);
+                call.on('close', () => endCallAndDestroy("The other person ended the call."));
             });
 
-            peer.on('error', (err) => {
-                console.error(err);
-                showError("Network error. Please refresh and try again.");
-            });
+            peer.on('connection', (conn) => setupDataConnection(conn));
+            peer.on('error', () => showError());
         };
 
         // --- JOINER FLOW ---
         function startJoinerFlow() {
-            menu.style.display = 'none';
+            mainOverlay.style.display = 'none';
             statusHUD.innerText = "Connecting to Host...";
             statusHUD.style.color = "#ffcc00";
 
@@ -167,47 +278,109 @@
 
             peer.on('open', () => {
                 const call = peer.call(joinRoomId, localStream);
+                if (!call) return showError();
                 
-                if (!call) {
-                    showError("Link Expired or Invalid.");
-                    return;
-                }
-
                 activeCall = call;
 
                 call.on('stream', (remoteStream) => {
                     remoteVideo.srcObject = remoteStream;
                     statusHUD.innerText = "Securely Connected";
                     statusHUD.style.color = "#34c759";
+                    chatToggleBtn.style.display = 'flex';
                 });
 
-                call.on('close', endCall);
+                call.on('close', () => endCallAndDestroy("The other person ended the call."));
+
+                const conn = peer.connect(joinRoomId);
+                setupDataConnection(conn);
             });
 
-            peer.on('error', (err) => {
-                console.error(err);
-                showError("Link Expired! The host has either left or someone else used this link.");
-            });
+            // If the room was already burned or closed, PeerJS throws an error here.
+            peer.on('error', () => showError());
         }
 
-       function showError(msg) {
-            // Instantly destroy the entire app interface
+        // --- P2P CHAT ENGINE ---
+        function setupDataConnection(conn) {
+            dataConn = conn;
+            dataConn.on('data', (data) => {
+                if (data && data.type === 'chat') {
+                    appendMessage(data.text, 'remote');
+                    if (!isChatOpen) chatBadge.style.display = 'block';
+                }
+            });
+            dataConn.on('close', () => endCallAndDestroy("The other person ended the call."));
+        }
+
+        function sendMessage() {
+            const text = chatInput.value.trim();
+            if (!text || !dataConn || !dataConn.open) return;
+            dataConn.send({ type: 'chat', text: text });
+            appendMessage(text, 'local');
+            chatInput.value = '';
+        }
+
+        function appendMessage(text, sender) {
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${sender}`;
+            bubble.textContent = text; // Prevents XSS script injection
+            chatMessages.appendChild(bubble);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        chatToggleBtn.onclick = () => {
+            isChatOpen = !isChatOpen;
+            chatPanel.style.display = isChatOpen ? 'flex' : 'none';
+            if (isChatOpen) {
+                chatBadge.style.display = 'none';
+                chatInput.focus();
+            }
+        };
+
+        closeChatBtn.onclick = () => {
+            isChatOpen = false;
+            chatPanel.style.display = 'none';
+        };
+
+        sendBtn.onclick = sendMessage;
+        chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+        // --- DESTRUCTION FUNCTIONS ---
+
+        // Called when a link is invalid (Instantly black screen and eject)
+        function showError() {
+            shutOffHardware();
+            document.body.style.display = 'none'; // Instant blackout
+            window.location.replace("https://google.com");
+        }
+
+        // Called when someone clicks "End Call" or the other person disconnects
+        function endCallAndDestroy(msg) {
+            if (activeCall) activeCall.close();
+            if (dataConn) dataConn.close();
+            if (peer) peer.destroy(); 
+            
+            shutOffHardware();
+
+            // Flash a secure termination screen
             document.body.innerHTML = `
-                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #111; color: #888; font-family: monospace;">
-                    404 | link error.
+                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; color: #ff3b30; font-family: monospace; font-size: 18px;">
+                    ${msg} Ejecting from session...
                 </div>
             `;
-            
-            // OPTIONAL: If you want to violently redirect them away from your site entirely instead, 
-            // delete the code above and uncomment the line below:
-            // window.location.replace("https://google.com");
+
+            // Forcibly eject them from the website entirely after 1.5 seconds
+            setTimeout(() => {
+                window.location.replace("https://google.com");
+            }, 1500);
         }
 
-        function endCall() {
-            remoteVideo.srcObject = null;
-            statusHUD.innerText = "Call Ended";
-            statusHUD.style.color = "#ff3b30";
-            setTimeout(() => window.location.href = window.location.origin + window.location.pathname, 2000);
+        // Hardware Killswitch
+        function shutOffHardware() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop(); // Physically turns off the camera light and microphone
+                });
+            }
         }
 
         init();
